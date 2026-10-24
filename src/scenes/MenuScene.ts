@@ -188,8 +188,6 @@ export class MenuScene extends Phaser.Scene {
     this.nightDecorations.add([
       this.add.circle(1392, 127, 53, 0x4e91df, 0.22),
       this.add.circle(1392, 127, 34, 0xf0f4d2, 0.96).setStrokeStyle(2, 0xdbe7ff, 0.9),
-      this.add.image(190, 622, "night-halo").setTint(0x28c5ff).setDisplaySize(210, 105).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.1),
-      this.add.image(1410, 613, "night-halo").setTint(0xff5968).setDisplaySize(210, 105).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.1),
     ]);
     const stars: Array<[number, number, number]> = [
       [82, 83, 3], [198, 188, 2], [322, 87, 2], [1295, 86, 2],

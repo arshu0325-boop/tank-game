@@ -41,7 +41,6 @@ export class MineScene extends Phaser.Scene {
   private resourceText!: Phaser.GameObjects.Text;
   private hintText!: Phaser.GameObjects.Text;
   private tanks!: Record<PlayerId, Phaser.GameObjects.Image>;
-  private tankGlows?: Record<PlayerId, Phaser.GameObjects.Image>;
   private drills!: Record<PlayerId, Phaser.GameObjects.Image>;
   private surfaceRows: number[] = [];
   private facing: Record<PlayerId, -1 | 1> = { 1: 1, 2: -1 };
@@ -83,11 +82,7 @@ export class MineScene extends Phaser.Scene {
     drawSky(this);
     this.createWorld();
     if (gameState.nightMode) {
-      this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x0a1550, 0.42).setDepth(14);
-      this.tankGlows = {
-        1: this.makeTankGlow(1, 0x28c5ff),
-        2: this.makeTankGlow(2, 0xff5968),
-      };
+      this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x0a1550, 0.42).setDepth(7.5);
     }
     this.createHud();
     if (this.input.keyboard) {
@@ -144,7 +139,6 @@ export class MineScene extends Phaser.Scene {
     this.timeText.setText(formatTime(this.timeLeft));
     this.drawMineTimerBar();
     this.updateTankMovement(delta / 1000);
-    this.syncTankGlows();
     this.drawDrills();
     this.updateHud();
     if (this.input.keyboard && this.keys) {
@@ -231,23 +225,6 @@ export class MineScene extends Phaser.Scene {
     divider.lineBetween(GAME_WIDTH / 2, 280, GAME_WIDTH / 2, GAME_HEIGHT - 58);
     divider.lineStyle(1, 0x18242c, 0.8);
     divider.lineBetween(GAME_WIDTH / 2 + 3, 280, GAME_WIDTH / 2 + 3, GAME_HEIGHT - 58);
-  }
-
-  private makeTankGlow(id: PlayerId, color: number): Phaser.GameObjects.Image {
-    const tank = this.tanks[id];
-    return this.add.image(tank.x, tank.y - 28, "night-halo")
-      .setTint(color)
-      .setDisplaySize(190, 96)
-      .setBlendMode(Phaser.BlendModes.ADD)
-      .setAlpha(0.24)
-      .setDepth(14.5);
-  }
-
-  private syncTankGlows(): void {
-    if (!this.tankGlows) return;
-    for (const id of [1, 2] as PlayerId[]) {
-      this.tankGlows[id].setPosition(this.tanks[id].x, this.tanks[id].y - 28);
-    }
   }
 
   private createHud(): void {
@@ -480,8 +457,8 @@ export class MineScene extends Phaser.Scene {
     target.hp--;
     target.image.setAlpha(0.55 + 0.45 * target.hp / target.maxHp);
     this.drawMiningCracks(target);
-    this.emitBlockParticles(x, y, target.type === "dirt" ? 0xb7794c : target.type === "stone" ? 0x9ca4a7 : 0x9c82c2, 5);
-    this.tweens.add({ targets: target.image, angle: { from: -4, to: 4 }, yoyo: true, duration: 45, repeat: 1 });
+    this.emitBlockParticles(x, y, target.type === "dirt" ? 0xb7794c : target.type === "stone" ? 0x9ca4a7 : 0x9c82c2, 9);
+    this.tweens.add({ targets: target.image, angle: { from: -5, to: 5 }, yoyo: true, duration: 70, repeat: 1 });
     if (target.hp > 0) {
       this.showMiningMessage(x, y - 12, `${target.hp} HP`, id === 1 ? "#73d8ff" : "#ff9a8c");
       return;
@@ -490,9 +467,9 @@ export class MineScene extends Phaser.Scene {
     const player = playerById(id);
     player.inventory[target.type] += 1;
     if (target.ore === "iron") player.iron += 1;
-    this.emitBlockParticles(x, y, target.ore === "iron" ? 0xffd05b : 0xd3a06e, 14);
+    this.emitBlockParticles(x, y, target.ore === "iron" ? 0xffd05b : 0xd3a06e, 26);
     this.tweens.add({
-      targets: target.image, scale: 0.2, alpha: 0, duration: 120,
+      targets: target.image, scale: 0.12, angle: Phaser.Math.Between(-12, 12), alpha: 0, duration: 240,
       onComplete: () => target.image.destroy(),
     });
     target.crack?.destroy();
@@ -504,16 +481,17 @@ export class MineScene extends Phaser.Scene {
 
   private emitBlockParticles(x: number, y: number, color: number, count: number): void {
     for (let i = 0; i < count; i++) {
-      const particle = this.add.rectangle(x, y, Phaser.Math.Between(3, 6), Phaser.Math.Between(3, 6), color, 1).setDepth(10);
-      const drift = Phaser.Math.Between(-30, 30);
+      const size = Phaser.Math.Between(4, 8);
+      const particle = this.add.rectangle(x, y, size, size, color, 1).setDepth(10);
+      const drift = Phaser.Math.Between(-48, 48);
       this.tweens.add({
         targets: particle,
         x: x + drift,
-        y: y + Phaser.Math.Between(12, 48),
+        y: y + Phaser.Math.Between(18, 78),
         angle: Phaser.Math.Between(-180, 180),
         alpha: 0,
-        duration: Phaser.Math.Between(280, 520),
-        ease: "Cubic.easeIn",
+        duration: Phaser.Math.Between(600, 1000),
+        ease: "Cubic.easeOut",
         onComplete: () => particle.destroy(),
       });
     }

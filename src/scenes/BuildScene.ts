@@ -50,11 +50,7 @@ export class BuildScene extends Phaser.Scene {
     this.add.image(1320, 590, `${playerById(2).tankTexture}-preview`).setOrigin(0.5, 1)
       .setFlipX(!p2FacesLeftByDefault).setDepth(6);
     if (gameState.nightMode) {
-      this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x0a1550, 0.42).setDepth(14);
-      this.add.image(280, 555, "night-halo").setTint(0x28c5ff).setDisplaySize(210, 105)
-        .setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.2).setDepth(14.5);
-      this.add.image(1320, 555, "night-halo").setTint(0xff5968).setDisplaySize(210, 105)
-        .setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.2).setDepth(14.5);
+      this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x0a1550, 0.42).setDepth(5.5);
     }
     this.createHud();
     this.renderExistingBlocks();
@@ -252,9 +248,9 @@ export class BuildScene extends Phaser.Scene {
     const y = BUILD_ORIGIN_Y + row * TILE_SIZE + TILE_SIZE / 2;
     const image = addBlockImage(this, x, y, type, { size: TILE_SIZE }).setDepth(8);
     if (animate) {
-      image.setScale(0.55).setAlpha(0.4);
-      this.tweens.add({ targets: image, scale: 1, alpha: 1, duration: 160, ease: "Back.Out" });
-      this.emitBlockParticles(x, y, type === "dirt" ? 0xc8915f : type === "stone" ? 0xc4d0d5 : 0xb7a4e4, 5);
+      image.setScale(0.42).setAlpha(0.28);
+      this.tweens.add({ targets: image, scale: 1, alpha: 1, duration: 300, ease: "Back.Out" });
+      this.emitBlockParticles(x, y, type === "dirt" ? 0xc8915f : type === "stone" ? 0xc4d0d5 : 0xb7a4e4, 12);
     }
     const key = this.placementKey(id, col, row);
     this.placed.set(key, { ownerId: id, col, row, type, image });
@@ -263,9 +259,9 @@ export class BuildScene extends Phaser.Scene {
   private removeBlock(key: string): void {
     const block = this.placed.get(key);
     if (!block) return;
-    this.emitBlockParticles(block.image.x, block.image.y, block.type === "dirt" ? 0xc8915f : block.type === "stone" ? 0xc4d0d5 : 0xb7a4e4, 9);
+    this.emitBlockParticles(block.image.x, block.image.y, block.type === "dirt" ? 0xc8915f : block.type === "stone" ? 0xc4d0d5 : 0xb7a4e4, 22);
     this.tweens.add({
-      targets: block.image, scale: 0.25, alpha: 0, duration: 130,
+      targets: block.image, scale: 0.12, angle: Phaser.Math.Between(-12, 12), alpha: 0, duration: 240,
       onComplete: () => block.image.destroy(),
     });
     this.placed.delete(key);
@@ -279,15 +275,16 @@ export class BuildScene extends Phaser.Scene {
 
   private emitBlockParticles(x: number, y: number, color: number, count: number): void {
     for (let i = 0; i < count; i++) {
-      const particle = this.add.rectangle(x, y, Phaser.Math.Between(3, 6), Phaser.Math.Between(3, 6), color, 1).setDepth(10);
+      const size = Phaser.Math.Between(4, 8);
+      const particle = this.add.rectangle(x, y, size, size, color, 1).setDepth(10);
       this.tweens.add({
         targets: particle,
-        x: x + Phaser.Math.Between(-24, 24),
-        y: y + Phaser.Math.Between(8, 42),
+        x: x + Phaser.Math.Between(-42, 42),
+        y: y + Phaser.Math.Between(12, 64),
         angle: Phaser.Math.Between(-150, 150),
         alpha: 0,
-        duration: Phaser.Math.Between(260, 460),
-        ease: "Cubic.easeIn",
+        duration: Phaser.Math.Between(600, 950),
+        ease: "Cubic.easeOut",
         onComplete: () => particle.destroy(),
       });
     }

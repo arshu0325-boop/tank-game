@@ -130,10 +130,10 @@ export class PreloadScene extends Phaser.Scene {
       return `rgb(${channels[0]},${channels[1]},${channels[2]})`;
     };
     const vibrantColor = `#${baseColor.slice(1).match(/../g)!.map((part) =>
-      Math.min(255, Math.round(Number.parseInt(part, 16) * 1.35)).toString(16).padStart(2, "0"),
+      Math.min(255, Math.round(Number.parseInt(part, 16) * 1.5)).toString(16).padStart(2, "0"),
     ).join("")}`;
-    const dark = adjust(vibrantColor, -0.48);
-    const light = adjust(vibrantColor, 0.38);
+    const dark = adjust(vibrantColor, -0.4);
+    const light = adjust(vibrantColor, 0.5);
 
     // Layered tracks, wheels, and a cast shadow give the small sprite volume.
     ctx.fillStyle = "rgba(0,0,0,0.32)";
@@ -188,6 +188,22 @@ export class PreloadScene extends Phaser.Scene {
       ctx.beginPath(); ctx.arc(x, y, 1.5, 0, Math.PI * 2); ctx.fill();
     }
 
+    // Glossy color sheen is clipped to the hull silhouette, so it brightens
+    // the paint without creating a glow outside the tank's outline.
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(18, 44); ctx.lineTo(26, 34); ctx.lineTo(39, 30); ctx.lineTo(91, 30);
+    ctx.lineTo(106, 38); ctx.lineTo(114, 45); ctx.lineTo(108, 48); ctx.lineTo(21, 48); ctx.closePath();
+    ctx.clip();
+    const hullSheen = ctx.createLinearGradient(18, 28, 88, 51);
+    hullSheen.addColorStop(0, "rgba(255,255,255,0.58)");
+    hullSheen.addColorStop(0.32, "rgba(255,255,255,0.2)");
+    hullSheen.addColorStop(0.58, "rgba(125,239,255,0.12)");
+    hullSheen.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = hullSheen;
+    ctx.fillRect(16, 27, 104, 25);
+    ctx.restore();
+
     if (includeCannon) {
       const drawBarrel = (y: number, thickness: number, length: number): void => {
         ctx.fillStyle = "#111820";
@@ -228,6 +244,15 @@ export class PreloadScene extends Phaser.Scene {
     turret.addColorStop(0, light); turret.addColorStop(0.48, vibrantColor); turret.addColorStop(1, dark);
     ctx.fillStyle = turret;
     ctx.beginPath(); ctx.roundRect(turretBox.x, turretBox.y, turretBox.w, turretBox.h, 6); ctx.fill();
+    ctx.save();
+    ctx.beginPath(); ctx.roundRect(turretBox.x, turretBox.y, turretBox.w, turretBox.h, 6); ctx.clip();
+    const turretSheen = ctx.createLinearGradient(turretBox.x, turretBox.y, turretBox.x + turretBox.w, turretBox.y + turretBox.h);
+    turretSheen.addColorStop(0, "rgba(255,255,255,0.52)");
+    turretSheen.addColorStop(0.42, "rgba(255,255,255,0.12)");
+    turretSheen.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = turretSheen;
+    ctx.fillRect(turretBox.x, turretBox.y, turretBox.w, turretBox.h);
+    ctx.restore();
     ctx.fillStyle = accent;
     ctx.beginPath(); ctx.roundRect(turretBox.x + 5, turretBox.y + 3, turretBox.w - 15, 3, 2); ctx.fill();
     ctx.fillStyle = "rgba(255,255,255,0.28)";
@@ -245,31 +270,27 @@ export class PreloadScene extends Phaser.Scene {
         ctx.fillStyle = accent;
         ctx.beginPath(); ctx.arc(cx - 0.6, cy - 0.6, 1.5, 0, Math.PI * 2); ctx.fill();
       }
-      // A forward cannon sits above the rocket pod so Wrecker reads clearly as a tank.
-      ctx.fillStyle = "#111820";
-      ctx.beginPath(); ctx.roundRect(76, 24, 49, 8, 4); ctx.fill();
-      const barrel = ctx.createLinearGradient(0, 24, 0, 32);
-      barrel.addColorStop(0, "#eff7ff"); barrel.addColorStop(0.42, "#a8bac9"); barrel.addColorStop(1, "#526575");
-      ctx.fillStyle = barrel;
-      ctx.beginPath(); ctx.roundRect(78, 25, 45, 6, 3); ctx.fill();
-      ctx.fillStyle = accent;
-      ctx.fillRect(84, 27, 24, 2);
-      ctx.fillStyle = "#283440";
-      ctx.fillRect(115, 23, 4, 10);
-      ctx.fillStyle = "#dce9f2";
-      ctx.fillRect(121, 26, 2, 4);
+      // BattleScene draws the aimed cannon separately; keep only the rocket pod
+      // on the base tank texture so the weapon is not rendered twice.
+      if (includeCannon) {
+        ctx.fillStyle = "#111820";
+        ctx.beginPath(); ctx.roundRect(76, 24, 49, 8, 4); ctx.fill();
+        const barrel = ctx.createLinearGradient(0, 24, 0, 32);
+        barrel.addColorStop(0, "#eff7ff"); barrel.addColorStop(0.42, "#a8bac9"); barrel.addColorStop(1, "#526575");
+        ctx.fillStyle = barrel;
+        ctx.beginPath(); ctx.roundRect(78, 25, 45, 6, 3); ctx.fill();
+        ctx.fillStyle = accent;
+        ctx.fillRect(84, 27, 24, 2);
+        ctx.fillStyle = "#283440";
+        ctx.fillRect(115, 23, 4, 10);
+        ctx.fillStyle = "#dce9f2";
+        ctx.fillRect(121, 26, 2, 4);
+      }
     } else if (model === "scout") {
       ctx.fillStyle = "#111820";
       ctx.fillRect(66, 13, 2, 10);
       ctx.fillStyle = accent;
       ctx.beginPath(); ctx.arc(67, 12, 2.4, 0, Math.PI * 2); ctx.fill();
-    } else {
-      ctx.fillStyle = "#101820";
-      ctx.beginPath(); ctx.roundRect(58, turretBox.y - 7, model === "heavy" ? 25 : 19, 10, 4); ctx.fill();
-      ctx.fillStyle = vibrantColor;
-      ctx.beginPath(); ctx.roundRect(60, turretBox.y - 8, model === "heavy" ? 22 : 16, 9, 4); ctx.fill();
-      ctx.fillStyle = accent;
-      ctx.fillRect(63, turretBox.y - 6, 10, 2);
     }
 
     // Glazed optics, panel seams, and a tiny headlamp add readable detail at game scale.
