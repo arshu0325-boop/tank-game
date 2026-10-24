@@ -19,6 +19,9 @@ export class PreloadScene extends Phaser.Scene {
 
   private createPixelTile(key: string, base: string, shades: string[], grassTop = false): void {
     const texture = this.textures.createCanvas(key, 40, 40);
+    if (texture === null) {
+  throw new Error(`Failed to create texture: ${key}`);
+}
     const ctx = texture.getContext();
     ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = base;
@@ -56,6 +59,9 @@ export class PreloadScene extends Phaser.Scene {
 
   private createOreTile(key: string, coal: boolean): void {
     const texture = this.textures.createCanvas(key, 40, 40);
+    if (texture === null) {
+  throw new Error(`Failed to create texture: ${key}`);
+}
     const ctx = texture.getContext();
     ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = "#73777a";
@@ -76,11 +82,18 @@ export class PreloadScene extends Phaser.Scene {
     ctx.fillRect(0, 38, 40, 2);
     ctx.fillRect(38, 0, 2, 40);
     texture.refresh();
+    if (!texture) {
+    throw new Error(`Failed to create texture: ${key}`);
+}
   }
 
   private createTankTexture(key: string, baseColor: string, accent: string, mirror: boolean): void {
     const texture = this.textures.createCanvas(key, 128, 70);
+    if (texture === null) {
+  throw new Error(`Failed to create texture: ${key}`);
+}
     const ctx = texture.getContext();
+    
     ctx.imageSmoothingEnabled = false;
     if (mirror) {
       ctx.translate(128, 0);
@@ -135,5 +148,8 @@ export class PreloadScene extends Phaser.Scene {
     ctx.fillStyle = "#15191e";
     ctx.fillRect(9, 42, 110, 3);
     texture.refresh();
+    if (!texture) {
+    throw new Error(`Failed to create texture: ${key}`);
+}
   }
 }
