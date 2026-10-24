@@ -38,6 +38,7 @@ export class MineScene extends Phaser.Scene {
   private resourceText!: Phaser.GameObjects.Text;
   private hintText!: Phaser.GameObjects.Text;
   private tanks!: Record<PlayerId, Phaser.GameObjects.Image>;
+  private tankGlows?: Record<PlayerId, Phaser.GameObjects.Image>;
   private drills!: Record<PlayerId, Phaser.GameObjects.Image>;
   private surfaceRows: number[] = [];
   private facing: Record<PlayerId, -1 | 1> = { 1: 1, 2: -1 };
@@ -46,8 +47,10 @@ export class MineScene extends Phaser.Scene {
   private keys!: {
     p1Left: Phaser.Input.Keyboard.Key;
     p1Right: Phaser.Input.Keyboard.Key;
+    p1Up: Phaser.Input.Keyboard.Key;
     p2Left: Phaser.Input.Keyboard.Key;
     p2Right: Phaser.Input.Keyboard.Key;
+    p2Up: Phaser.Input.Keyboard.Key;
     p1Mine: Phaser.Input.Keyboard.Key;
     p2Mine: Phaser.Input.Keyboard.Key;
   };
@@ -74,20 +77,28 @@ export class MineScene extends Phaser.Scene {
 
     drawSky(this);
     this.createWorld();
-    if (gameState.nightMode) this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x0a1550, 0.42).setDepth(14);
+    if (gameState.nightMode) {
+      this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x0a1550, 0.42).setDepth(14);
+      this.tankGlows = {
+        1: this.makeTankGlow(1, 0x28c5ff),
+        2: this.makeTankGlow(2, 0xff5968),
+      };
+    }
     this.createHud();
     if (this.input.keyboard) {
       this.keys = this.input.keyboard.addKeys({
         p1Left: Phaser.Input.Keyboard.KeyCodes.A,
         p1Right: Phaser.Input.Keyboard.KeyCodes.D,
+        p1Up: Phaser.Input.Keyboard.KeyCodes.W,
         p2Left: Phaser.Input.Keyboard.KeyCodes.LEFT,
         p2Right: Phaser.Input.Keyboard.KeyCodes.RIGHT,
+        p2Up: Phaser.Input.Keyboard.KeyCodes.UP,
         p1Mine: Phaser.Input.Keyboard.KeyCodes.F,
         p2Mine: Phaser.Input.Keyboard.KeyCodes.ENTER,
       }) as typeof this.keys;
     }
     this.hintText = this.add.text(GAME_WIDTH / 2, 210,
-      "DRIVE: P1 A / D  •  P2 ← / →     HOLD TO DRILL: P1 F  •  P2 ENTER  •  TURN TO REACH BOTH EDGES", {
+      "DRIVE: P1 A / D  •  P2 ← / →     CLIMB: P1 W  •  P2 ↑     DRILL: P1 F  •  P2 ENTER", {
         fontFamily: "Arial Black, Arial, sans-serif", fontSize: "19px", color: "#fff4cf",
         stroke: "#27313b", strokeThickness: 5, align: "center",
       }).setOrigin(0.5).setDepth(20);
@@ -101,6 +112,7 @@ export class MineScene extends Phaser.Scene {
     this.timeText.setText(formatTime(this.timeLeft));
     this.drawMineTimerBar();
     this.updateTankMovement(delta / 1000);
+    this.syncTankGlows();
     this.drawDrills();
     this.updateHud();
     if (this.input.keyboard && this.keys) {
@@ -185,6 +197,23 @@ export class MineScene extends Phaser.Scene {
     divider.lineBetween(GAME_WIDTH / 2 + 3, 280, GAME_WIDTH / 2 + 3, GAME_HEIGHT - 58);
   }
 
+  private makeTankGlow(id: PlayerId, color: number): Phaser.GameObjects.Image {
+    const tank = this.tanks[id];
+    return this.add.image(tank.x, tank.y - 28, "night-halo")
+      .setTint(color)
+      .setDisplaySize(190, 96)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setAlpha(0.24)
+      .setDepth(14.5);
+  }
+
+  private syncTankGlows(): void {
+    if (!this.tankGlows) return;
+    for (const id of [1, 2] as PlayerId[]) {
+      this.tankGlows[id].setPosition(this.tanks[id].x, this.tanks[id].y - 28);
+    }
+  }
+
   private createHud(): void {
     this.hudGraphics = this.add.graphics().setDepth(25);
     this.add.text(48, 27, "P1: Controller", this.panelTitleStyle()).setDepth(26);
@@ -217,6 +246,7 @@ export class MineScene extends Phaser.Scene {
       const tank = this.tanks[id];
       const left = id === 1 ? this.keys.p1Left.isDown : this.keys.p2Left.isDown;
       const right = id === 1 ? this.keys.p1Right.isDown : this.keys.p2Right.isDown;
+      const climb = id === 1 ? this.keys.p1Up.isDown : this.keys.p2Up.isDown;
       const direction = Number(right) - Number(left);
       const safeDelta = Math.min(deltaSeconds, 0.05);
       if (direction !== 0) {
@@ -229,9 +259,14 @@ export class MineScene extends Phaser.Scene {
           const fuelMove = player.fuel / MINE_FUEL_PER_PIXEL;
           const move = Math.sign(desiredMove) * Math.min(Math.abs(desiredMove), fuelMove);
           const nextX = Phaser.Math.Clamp(tank.x + move, minX, maxX);
-          const distanceMoved = Math.abs(nextX - tank.x);
-          tank.x = nextX;
-          player.fuel = Math.max(0, player.fuel - distanceMoved * MINE_FUEL_PER_PIXEL);
+          const currentSupportY = this.tankSupportY(tank.x, id);
+          const nextSupportY = this.tankSupportY(nextX, id);
+          const steppingUp = nextSupportY < currentSupportY - 3;
+          if (!steppingUp || climb) {
+            const distanceMoved = Math.abs(nextX - tank.x);
+            tank.x = nextX;
+            player.fuel = Math.max(0, player.fuel - distanceMoved * MINE_FUEL_PER_PIXEL);
+          }
         }
       }
 
@@ -241,8 +276,8 @@ export class MineScene extends Phaser.Scene {
         tank.y = Math.min(supportY, tank.y + this.fallVelocity[id] * safeDelta);
         if (tank.y >= supportY) this.fallVelocity[id] = 0;
       } else if (tank.y > supportY) {
-        tank.y = supportY;
         this.fallVelocity[id] = 0;
+        if (climb) tank.y = Math.max(supportY, tank.y - 115 * safeDelta);
       } else {
         this.fallVelocity[id] = 0;
       }

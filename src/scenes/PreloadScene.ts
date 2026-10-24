@@ -18,6 +18,7 @@ export class PreloadScene extends Phaser.Scene {
     this.createTankTexture("tank-cyan", "#14a9c7", "#73f1ff", false, "twin");
     this.createTankTexture("tank-lime", "#69a91d", "#c8ef45", false, "rocket");
     this.createTankTexture("tank-violet", "#7044c7", "#c39aff", false, "scout");
+    this.createNightHaloTexture();
     this.createDrillTexture();
     this.createProjectileTextures();
     this.scene.start("MenuScene");
@@ -117,8 +118,11 @@ export class PreloadScene extends Phaser.Scene {
         .map((channel) => Math.max(0, Math.min(255, Math.round(channel + (amount >= 0 ? 255 - channel : channel) * amount))));
       return `rgb(${channels[0]},${channels[1]},${channels[2]})`;
     };
-    const dark = adjust(baseColor, -0.48);
-    const light = adjust(baseColor, 0.35);
+    const vibrantColor = `#${baseColor.slice(1).match(/../g)!.map((part) =>
+      Math.min(255, Math.round(Number.parseInt(part, 16) * 1.2)).toString(16).padStart(2, "0"),
+    ).join("")}`;
+    const dark = adjust(vibrantColor, -0.48);
+    const light = adjust(vibrantColor, 0.38);
 
     // Layered tracks, wheels, and a cast shadow give the small sprite volume.
     ctx.fillStyle = "rgba(0,0,0,0.32)";
@@ -155,7 +159,7 @@ export class PreloadScene extends Phaser.Scene {
     ctx.moveTo(13, 46); ctx.lineTo(22, 33); ctx.lineTo(38, 27); ctx.lineTo(93, 28);
     ctx.lineTo(111, 38); ctx.lineTo(119, 47); ctx.lineTo(111, 51); ctx.lineTo(19, 51); ctx.closePath(); ctx.fill();
     const hull = ctx.createLinearGradient(18, 26, 20, 52);
-    hull.addColorStop(0, light); hull.addColorStop(0.36, baseColor); hull.addColorStop(1, dark);
+    hull.addColorStop(0, light); hull.addColorStop(0.36, vibrantColor); hull.addColorStop(1, dark);
     ctx.fillStyle = hull;
     ctx.beginPath();
     ctx.moveTo(18, 44); ctx.lineTo(26, 34); ctx.lineTo(39, 30); ctx.lineTo(91, 30);
@@ -210,7 +214,7 @@ export class PreloadScene extends Phaser.Scene {
     ctx.fillStyle = "#111820";
     ctx.beginPath(); ctx.roundRect(turretBox.x - 3, turretBox.y - 2, turretBox.w + 6, turretBox.h + 5, 7); ctx.fill();
     const turret = ctx.createLinearGradient(0, turretBox.y, 0, turretBox.y + turretBox.h + 3);
-    turret.addColorStop(0, light); turret.addColorStop(0.48, baseColor); turret.addColorStop(1, dark);
+    turret.addColorStop(0, light); turret.addColorStop(0.48, vibrantColor); turret.addColorStop(1, dark);
     ctx.fillStyle = turret;
     ctx.beginPath(); ctx.roundRect(turretBox.x, turretBox.y, turretBox.w, turretBox.h, 6); ctx.fill();
     ctx.fillStyle = accent;
@@ -238,7 +242,7 @@ export class PreloadScene extends Phaser.Scene {
     } else {
       ctx.fillStyle = "#101820";
       ctx.beginPath(); ctx.roundRect(58, turretBox.y - 7, model === "heavy" ? 25 : 19, 10, 4); ctx.fill();
-      ctx.fillStyle = baseColor;
+      ctx.fillStyle = vibrantColor;
       ctx.beginPath(); ctx.roundRect(60, turretBox.y - 8, model === "heavy" ? 22 : 16, 9, 4); ctx.fill();
       ctx.fillStyle = accent;
       ctx.fillRect(63, turretBox.y - 6, 10, 2);
@@ -298,6 +302,21 @@ export class PreloadScene extends Phaser.Scene {
     ctx.fillRect(47, 18, 4, 3);
     ctx.fillStyle = "#f6d16a";
     ctx.fillRect(22, 8, 5, 3);
+    texture.refresh();
+  }
+
+  private createNightHaloTexture(): void {
+    const texture = this.textures.createCanvas("night-halo", 128, 128);
+    if (!texture) throw new Error("Failed to create texture: night-halo");
+    const ctx = texture.getContext();
+    const gradient = ctx.createRadialGradient(64, 64, 5, 64, 64, 63);
+    gradient.addColorStop(0, "rgba(255,255,255,0.48)");
+    gradient.addColorStop(0.24, "rgba(255,255,255,0.32)");
+    gradient.addColorStop(0.58, "rgba(255,255,255,0.12)");
+    gradient.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.clearRect(0, 0, 128, 128);
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 128, 128);
     texture.refresh();
   }
 

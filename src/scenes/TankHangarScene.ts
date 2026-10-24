@@ -43,10 +43,24 @@ export class TankHangarScene extends Phaser.Scene {
     const bg = this.add.graphics();
     bg.fillStyle(0x241b2a, 1);
     bg.fillRect(0, 205, GAME_WIDTH, 640);
-    bg.fillStyle(0x493039, 1);
-    bg.fillRect(0, 305, GAME_WIDTH, 12);
-    bg.fillRect(0, 535, GAME_WIDTH, 12);
-    bg.fillRect(0, 765, GAME_WIDTH, 12);
+    bg.fillStyle(0x70413c, 1);
+    bg.fillRect(0, 303, GAME_WIDTH, 9);
+    bg.fillStyle(0x4a2d32, 1);
+    bg.fillRect(0, 312, GAME_WIDTH, 13);
+    for (const y of [500, 725]) {
+      bg.fillStyle(0x21171f, 0.85);
+      bg.fillRect(0, y + 13, GAME_WIDTH, 26);
+      bg.fillStyle(0x75423d, 1);
+      bg.fillRect(0, y, GAME_WIDTH, 15);
+      bg.fillStyle(0xc07850, 0.9);
+      bg.fillRect(0, y, GAME_WIDTH, 3);
+      bg.fillStyle(0x462b32, 1);
+      bg.fillRect(0, y + 15, GAME_WIDTH, 4);
+      for (let x = 80; x < GAME_WIDTH; x += 320) {
+        bg.fillStyle(0x8a5146, 0.85);
+        bg.fillRect(x, y + 4, 2, 8);
+      }
+    }
     bg.lineStyle(2, 0x65434a, 0.5);
     for (let x = 30; x < GAME_WIDTH; x += 160) bg.lineBetween(x, 210, x, 840);
     this.add.rectangle(GAME_WIDTH / 2, 207, GAME_WIDTH, 10, 0x8b5143, 0.85);
@@ -80,11 +94,11 @@ export class TankHangarScene extends Phaser.Scene {
     const row = Math.floor(index / 3);
     const x = 280 + col * 520;
     const y = 390 + row * 225;
-    const panel = this.add.rectangle(x, y, 360, 194, 0x4a3438, 0.96)
+    const panel = this.add.rectangle(x, y, 360, 194, 0x3c2931, 0.94)
       .setStrokeStyle(3, tank.color, 0.9)
       .setInteractive({ useHandCursor: true });
-    panel.on("pointerover", () => panel.setFillStyle(0x624448));
-    panel.on("pointerout", () => panel.setFillStyle(0x4a3438));
+    panel.on("pointerover", () => panel.setFillStyle(0x53383d));
+    panel.on("pointerout", () => panel.setFillStyle(0x3c2931));
     panel.on("pointerdown", () => {
       playerById(this.activePlayer).tankTexture = tank.texture;
       this.scene.restart({ activePlayer: this.activePlayer });
@@ -93,18 +107,24 @@ export class TankHangarScene extends Phaser.Scene {
     const selectedP1 = playerById(1).tankTexture === tank.texture;
     const selectedP2 = playerById(2).tankTexture === tank.texture;
     if (selectedP1 || selectedP2) {
-      this.add.rectangle(x, y - 76, 112, 25, selectedP1 ? 0x138dea : 0xe43d46, 1)
+      this.add.rectangle(x, y - 82, 112, 25, selectedP1 ? 0x138dea : 0xe43d46, 1)
         .setStrokeStyle(1, 0xffffff, 0.7);
-      this.add.text(x, y - 76, selectedP1 && selectedP2 ? "P1 + P2" : selectedP1 ? "P1 PICK" : "P2 PICK", {
+      this.add.text(x, y - 82, selectedP1 && selectedP2 ? "P1 + P2" : selectedP1 ? "P1 PICK" : "P2 PICK", {
         fontFamily: "Arial Black, Arial, sans-serif", fontSize: "12px", color: "#ffffff",
       }).setOrigin(0.5);
     }
-    this.add.image(x, y - 26, tank.texture).setScale(1.35);
-    this.add.text(x, y + 29, tank.name.toUpperCase(), {
+    this.add.ellipse(x + 5, y + 31, 205, 27, 0x111018, 0.62);
+    const shadow = this.add.image(x + 7, y - 3, tank.texture)
+      .setScale(1.65).setTint(0x17141b).setAlpha(0.72);
+    const preview = this.add.image(x, y - 11, tank.texture).setScale(1.65);
+    panel.on("pointerover", () => this.tweens.add({ targets: preview, scale: 1.74, duration: 130, ease: "Back.Out" }));
+    panel.on("pointerout", () => this.tweens.add({ targets: preview, scale: 1.65, duration: 130, ease: "Sine.Out" }));
+    shadow.setScale(1.65);
+    this.add.text(x, y + 64, tank.name.toUpperCase(), {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "21px", color: "#fff4dd",
       stroke: "#241b20", strokeThickness: 4,
     }).setOrigin(0.5);
-    this.add.text(x, y + 61, tank.role, {
+    this.add.text(x, y + 84, tank.role, {
       fontFamily: "Arial", fontSize: "16px", color: "#edc9a5",
     }).setOrigin(0.5);
   }

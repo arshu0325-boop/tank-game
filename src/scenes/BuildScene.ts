@@ -45,7 +45,13 @@ export class BuildScene extends Phaser.Scene {
     this.drawBuildGrids();
     this.add.image(280, 590, playerById(1).tankTexture).setOrigin(0.5, 1).setDepth(6);
     this.add.image(1320, 590, playerById(2).tankTexture).setOrigin(0.5, 1).setFlipX(true).setDepth(6);
-    if (gameState.nightMode) this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x0a1550, 0.42).setDepth(14);
+    if (gameState.nightMode) {
+      this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x0a1550, 0.42).setDepth(14);
+      this.add.image(280, 555, "night-halo").setTint(0x28c5ff).setDisplaySize(210, 105)
+        .setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.2).setDepth(14.5);
+      this.add.image(1320, 555, "night-halo").setTint(0xff5968).setDisplaySize(210, 105)
+        .setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.2).setDepth(14.5);
+    }
     this.createHud();
     this.renderExistingBlocks();
 

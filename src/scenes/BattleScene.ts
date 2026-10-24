@@ -44,6 +44,7 @@ interface ProjectileState {
   gravity: number;
   returning: boolean;
   image: Phaser.GameObjects.Image;
+  glowImage: Phaser.GameObjects.Image | null;
   trailClock: number;
 }
 
@@ -63,6 +64,7 @@ export class BattleScene extends Phaser.Scene {
   private hudGraphics!: Phaser.GameObjects.Graphics;
   private blocks: BattleBlock[] = [];
   private tanks!: Record<PlayerId, Phaser.GameObjects.Image>;
+  private tankGlows?: Record<PlayerId, Phaser.GameObjects.Image>;
   private activeProjectile: ProjectileState | null = null;
   private power = 0.88;
   private fireMessage = "Aim with your mouse, then click to fire.";
@@ -83,8 +85,9 @@ export class BattleScene extends Phaser.Scene {
   // Drag-to-aim + hold-to-charge controls.
   private isAiming = false;
   private aimPointerId: number | null = null;
-  private dragStartX = 0;
-  private dragStartY = 0;
+  private slingPullX = 0;
+  private slingPullY = 0;
+  private readonly maxSlingPull = 170;
   private currentAimAngle = -0.55;
   private dragPower = 0.88;
   private chargeBonus = 0;
@@ -111,6 +114,7 @@ export class BattleScene extends Phaser.Scene {
   create(): void {
     this.blocks = [];
     this.activeProjectile = null;
+    this.tankGlows = undefined;
     this.resolving = false;
     this.fireMessage = "";
     this.isAiming = false;
@@ -136,7 +140,13 @@ export class BattleScene extends Phaser.Scene {
       2: this.add.image(BATTLE_P2_X, this.terrainAt(BATTLE_P2_X), playerById(2).tankTexture).setOrigin(0.5, 1).setFlipX(true).setDepth(7),
     };
     this.createBattleBlocks();
-    if (gameState.nightMode) this.add.rectangle(BATTLE_WORLD_WIDTH / 2, GAME_HEIGHT / 2, BATTLE_WORLD_WIDTH, GAME_HEIGHT, 0x09134c, 0.48).setDepth(14);
+    if (gameState.nightMode) {
+      this.add.rectangle(BATTLE_WORLD_WIDTH / 2, GAME_HEIGHT / 2, BATTLE_WORLD_WIDTH, GAME_HEIGHT, 0x09134c, 0.48).setDepth(14);
+      this.tankGlows = {
+        1: this.makeTankGlow(1, 0x28c5ff),
+        2: this.makeTankGlow(2, 0xff5968),
+      };
+    }
     this.aimGraphics = this.add.graphics().setDepth(15);
     this.createHud();
     for (const child of this.children.list as unknown as Array<Phaser.GameObjects.GameObject & { depth: number; setScrollFactor(x: number, y?: number): unknown }>) {
@@ -185,6 +195,7 @@ export class BattleScene extends Phaser.Scene {
 
     this.tanks[1].y = this.terrainAt(this.tanks[1].x);
     this.tanks[2].y = this.terrainAt(this.tanks[2].x);
+    this.syncTankGlows();
     if (!this.activeProjectile && !this.resolving && !this.isAiming) {
       this.cameras.main.scrollX = this.battleCameraScrollX();
     }
@@ -249,6 +260,25 @@ export class BattleScene extends Phaser.Scene {
     this.terrain = [];
     for (let x = 0; x <= BATTLE_WORLD_WIDTH; x += TERRAIN_STEP) this.terrain.push(baseTerrainY(x, BATTLE_WORLD_WIDTH));
     this.terrainGraphics = this.add.graphics().setDepth(2);
+  }
+
+  private makeTankGlow(id: PlayerId, color: number): Phaser.GameObjects.Image {
+    const tank = this.tanks[id];
+    const glow = this.add.image(tank.x, tank.y - 30, "night-halo")
+      .setTint(color)
+      .setDisplaySize(200, 108)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setAlpha(0.22)
+      .setDepth(14.5);
+    this.tweens.add({ targets: glow, alpha: 0.12, duration: 1100, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
+    return glow;
+  }
+
+  private syncTankGlows(): void {
+    if (!this.tankGlows) return;
+    for (const id of [1, 2] as PlayerId[]) {
+      this.tankGlows[id].setPosition(this.tanks[id].x, this.tanks[id].y - 30);
+    }
   }
 
   private drawTerrain(): void {
@@ -336,7 +366,7 @@ export class BattleScene extends Phaser.Scene {
     this.weaponText = this.add.text(1400, 870, "TANK SHOT", {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "14px", color: "#f4f4ee", stroke: "#1e2020", strokeThickness: 3,
     }).setOrigin(0.5).setDepth(27);
-    this.add.text(GAME_WIDTH / 2, 893, "DRAG TO AIM  •  RELEASE TO FIRE     |     MOVE: P1 A/D   P2 ←/→     |     POWER: ↑ / ↓", {
+    this.add.text(GAME_WIDTH / 2, 893, "PULL BACK FROM YOUR TANK  •  RELEASE TO LAUNCH     |     MOVE: P1 A/D   P2 ←/→     |     POWER: ↑ / ↓", {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "13px", color: "#d6e0e5", stroke: "#111820", strokeThickness: 3,
     }).setOrigin(0.5).setDepth(27);
   }
@@ -381,12 +411,14 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
 
-    // Start aiming anywhere in the battlefield. Pull backward from the muzzle;
-    // keep holding to add a small amount of extra cannon charge.
+    // Grab the sling at the active tank, then pull it backward to aim.
+    const origin = this.muzzlePosition(gameState.currentPlayer);
+    const tank = this.tanks[gameState.currentPlayer];
+    // Aiming starts by grabbing the sling close to the active tank.
+    if (distance(pointer.worldX, pointer.worldY, origin.x, origin.y) > 112
+      && distance(pointer.worldX, pointer.worldY, tank.x, tank.y - 28) > 104) return;
     this.isAiming = true;
     this.aimPointerId = pointer.id;
-    this.dragStartX = pointer.worldX;
-    this.dragStartY = pointer.worldY;
     this.chargeBonus = 0;
     this.dragPower = this.power;
     this.updateDragAim(pointer.worldX, pointer.worldY);
@@ -417,13 +449,18 @@ export class BattleScene extends Phaser.Scene {
     const origin = this.muzzlePosition(id);
     const dir = id === 1 ? 1 : -1;
 
-    // Drag backward relative to the current tank. A longer pull raises base power.
-    const pullX = (origin.x - pointerX) * dir;
-    const pullY = origin.y - pointerY;
-    const pullLength = Math.hypot(pullX, pullY);
-    const safeLength = Math.max(45, pullLength);
+    // Pulling behind the tank compresses the sling; release launches forward.
+    const rawPullX = Math.max(0, (origin.x - pointerX) * dir);
+    const rawPullY = origin.y - pointerY;
+    const rawLength = Math.hypot(rawPullX, rawPullY);
+    const length = Math.min(this.maxSlingPull, rawLength);
+    const scale = rawLength > 0 ? length / rawLength : 0;
+    const pullX = rawPullX * scale;
+    const pullY = rawPullY * scale;
+    this.slingPullX = origin.x - dir * pullX;
+    this.slingPullY = origin.y - pullY;
     this.currentAimAngle = clamp(Math.atan2(pullY, Math.max(25, pullX)), -1.34, 0.28);
-    this.dragPower = clamp(0.5 + (safeLength - 45) / 215 * 0.7, 0.5, 1.2);
+    this.dragPower = clamp(0.5 + (length - 24) / 146 * 0.7, 0.5, 1.2);
   }
 
   private effectivePower(): number {
@@ -555,11 +592,9 @@ export class BattleScene extends Phaser.Scene {
 
   private drawAimGuide(): void {
     this.aimGraphics.clear();
-    const pointer = this.input.activePointer;
     const id = gameState.currentPlayer;
     const origin = this.muzzlePosition(id);
-    const angle = this.aimAngle(id, pointer.worldX, pointer.worldY);
-    this.drawTrajectory(origin.x, origin.y, angle, this.power, 0xffe7a5, 0.38);
+    this.drawTrajectory(origin.x, origin.y, this.currentAimAngle, this.power, 0xffe7a5, 0.28);
   }
 
   private drawTrajectoryPreview(): void {
@@ -568,14 +603,25 @@ export class BattleScene extends Phaser.Scene {
     const origin = this.muzzlePosition(id);
     this.drawTrajectory(origin.x, origin.y, this.currentAimAngle, this.effectivePower(), 0x8cffb5, 0.9);
 
-    // Show the pull-back vector and a small charge indicator near the pointer.
-    const pointer = this.input.activePointer;
-    this.aimGraphics.lineStyle(2, 0xffffff, 0.45);
-    this.aimGraphics.lineBetween(pointer.worldX, pointer.worldY, origin.x, origin.y);
+    // Draw the two stretched elastic bands from the tank's sling to the pulled shell.
+    const dir = id === 1 ? 1 : -1;
+    const anchorX = origin.x - dir * 25;
+    this.aimGraphics.lineStyle(8, 0x151a20, 0.9);
+    this.aimGraphics.lineBetween(anchorX, origin.y - 6, this.slingPullX, this.slingPullY - 4);
+    this.aimGraphics.lineBetween(anchorX, origin.y + 6, this.slingPullX, this.slingPullY + 4);
+    this.aimGraphics.lineStyle(3, 0xf0b65a, 0.95);
+    this.aimGraphics.lineBetween(anchorX, origin.y - 6, this.slingPullX, this.slingPullY - 4);
+    this.aimGraphics.lineBetween(anchorX, origin.y + 6, this.slingPullX, this.slingPullY + 4);
+    this.aimGraphics.fillStyle(WEAPONS[gameState.selectedWeapon].color, 0.95);
+    this.aimGraphics.fillCircle(this.slingPullX, this.slingPullY, 8);
+    this.aimGraphics.lineStyle(2, 0xfff6d1, 0.9);
+    this.aimGraphics.strokeCircle(this.slingPullX, this.slingPullY, 8);
+
+    // Show the pull-back power meter beside the anchored shell.
     const ratio = clamp(this.chargeBonus / this.maxChargeBonus, 0, 1);
-    this.aimGraphics.fillStyle(0x14202a, 0.9).fillRoundedRect(pointer.worldX - 34, pointer.worldY - 28, 68, 9, 4);
+    this.aimGraphics.fillStyle(0x14202a, 0.9).fillRoundedRect(this.slingPullX - 34, this.slingPullY - 28, 68, 9, 4);
     this.aimGraphics.fillStyle(ratio >= 0.8 ? 0xffb13b : 0x64e6ff, 1)
-      .fillRoundedRect(pointer.worldX - 32, pointer.worldY - 26, 64 * ratio, 5, 3);
+      .fillRoundedRect(this.slingPullX - 32, this.slingPullY - 26, 64 * ratio, 5, 3);
   }
 
   private drawTrajectory(
@@ -622,7 +668,7 @@ export class BattleScene extends Phaser.Scene {
 
       if (x < 0 || x > BATTLE_WORLD_WIDTH || (!returning && (y > this.terrainAt(clamp(x, 0, BATTLE_WORLD_WIDTH)) || y > GAME_HEIGHT - 4))) break;
 
-      const hitsBlock = this.blocks.some((block) =>
+      const hitsBlock = this.blocks.some((block) => block.ownerId !== id &&
         Math.abs(x - block.x) <= TILE_SIZE * 0.46 && Math.abs(y - block.y) <= TILE_SIZE * 0.46
       );
       if (hitsBlock) break;
@@ -655,6 +701,15 @@ export class BattleScene extends Phaser.Scene {
       .setScale(0.55).setDepth(16);
     projectileImage.setRotation(angle);
     this.tweens.add({ targets: projectileImage, scale: 1.15, duration: 240, ease: "Cubic.easeOut" });
+    const glowImage = gameState.nightMode
+      ? this.add.image(origin.x, origin.y, "night-halo")
+        .setDisplaySize(74, 74)
+        .setTint(spec.color)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setAlpha(0.92)
+        .setDepth(15.5)
+        .setRotation(angle)
+      : null;
     this.activeProjectile = {
       x: origin.x,
       y: origin.y,
@@ -668,6 +723,7 @@ export class BattleScene extends Phaser.Scene {
       gravity: spec.gravity,
       returning: false,
       image: projectileImage,
+      glowImage,
       trailClock: 0,
     };
     player.shotsFired += 1;
@@ -722,13 +778,14 @@ export class BattleScene extends Phaser.Scene {
     projectile.image.setPosition(projectile.x, projectile.y);
     const travelAngle = Math.atan2(projectile.vy, projectile.vx);
     projectile.image.setRotation(travelAngle + (projectile.weapon === "boomerang" ? projectile.age * 7 : 0));
+    projectile.glowImage?.setPosition(projectile.x, projectile.y).setRotation(projectile.image.rotation);
     while (projectile.trailClock >= 0.024) {
       projectile.trailClock -= 0.024;
       this.emitProjectileTrail(projectile);
     }
 
     // A wall collision takes priority over the terrain check, allowing blocks to shield tanks.
-    const hitBlock = this.blocks.find((block) =>
+    const hitBlock = this.blocks.find((block) => block.ownerId !== projectile.ownerId &&
       Math.abs(projectile.x - block.x) <= TILE_SIZE * 0.46 && Math.abs(projectile.y - block.y) <= TILE_SIZE * 0.46,
     );
     if (hitBlock) {
@@ -766,6 +823,7 @@ export class BattleScene extends Phaser.Scene {
       color,
       isFire ? 0.94 : 0.82,
     ).setDepth(17);
+    if (gameState.nightMode) particle.setBlendMode(Phaser.BlendModes.ADD);
     if (isFire && Math.random() > 0.5) particle.setStrokeStyle(2, 0xffed75, 0.8);
     this.tweens.add({
       targets: particle,
@@ -787,6 +845,7 @@ export class BattleScene extends Phaser.Scene {
     let wallBroken = false;
 
     for (const block of [...this.blocks]) {
+      if (block.ownerId === projectile.ownerId) continue;
       const d = distance(x, y, block.x, block.y);
       if (d > projectile.radius + TILE_SIZE * 0.62) continue;
       const falloff = clamp(1 - d / (projectile.radius + TILE_SIZE * 0.62), 0.15, 1);
@@ -836,6 +895,7 @@ export class BattleScene extends Phaser.Scene {
     this.showExplosion(x, y, projectile.radius, WEAPONS[projectile.weapon].color);
     this.cameras.main.shake(240, directTank ? 0.012 : 0.008);
     projectile.image.destroy();
+    projectile.glowImage?.destroy();
     this.activeProjectile = null;
     this.cameras.main.stopFollow();
     this.updateHud();
@@ -862,6 +922,7 @@ export class BattleScene extends Phaser.Scene {
     if (this.resolving) return;
     this.resolving = true;
     projectile.image.destroy();
+    projectile.glowImage?.destroy();
     this.activeProjectile = null;
     this.cameras.main.stopFollow();
     this.fireMessage = "Miss! The next tank gets its turn.";
@@ -893,11 +954,13 @@ export class BattleScene extends Phaser.Scene {
 
   private showExplosion(x: number, y: number, radius: number, color: number): void {
     const ring = this.add.circle(x, y, radius, color, 0.2).setStrokeStyle(4, 0xffe8ae, 0.9).setDepth(18);
+    if (gameState.nightMode) ring.setBlendMode(Phaser.BlendModes.ADD);
     ring.setScale(0.35);
     this.tweens.add({ targets: ring, scale: 1.45, alpha: 0, duration: 350, onComplete: () => ring.destroy() });
     for (let i = 0; i < 9; i++) {
       const angle = (Math.PI * 2 * i) / 9;
       const spark = this.add.circle(x, y, i % 2 ? 3 : 4, i % 2 ? 0xffe3a3 : color, 1).setDepth(19);
+      if (gameState.nightMode) spark.setBlendMode(Phaser.BlendModes.ADD);
       this.tweens.add({
         targets: spark,
         x: x + Math.cos(angle) * radius * (0.8 + (i % 3) * 0.25),

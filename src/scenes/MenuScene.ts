@@ -1,11 +1,13 @@
 
 import Phaser from "phaser";
 import { GAME_HEIGHT, GAME_WIDTH, drawSky } from "../grid";
-import { resetGameState } from "../state";
+import { gameState, playerById } from "../state";
 
 export class MenuScene extends Phaser.Scene {
   private startButton?: Phaser.GameObjects.Container;
   private buttonBackground?: Phaser.GameObjects.Graphics;
+  private nightOverlay!: Phaser.GameObjects.Rectangle;
+  private nightDecorations!: Phaser.GameObjects.Container;
 
   constructor() {
     super("MenuScene");
@@ -15,9 +17,11 @@ export class MenuScene extends Phaser.Scene {
     drawSky(this, true);
     this.drawMenuGround();
     this.drawPixelDecorations();
+    this.createNightLook();
     this.drawTitlePanel();
     this.drawStartButton();
     this.drawDescription();
+    this.drawNightModeToggle();
     this.drawPlayerCard({
       x: GAME_WIDTH / 2 - 225,
       y: 515,
@@ -26,9 +30,9 @@ export class MenuScene extends Phaser.Scene {
       player: "PLAYER 1",
       team: "BLUE TEAM",
       controls: [
-        { heading: "⛏ MINE", lines: ["A / D  Move tank", "Hold F  Drill for resources"] },
+        { heading: "⛏ MINE", lines: ["A / D move  •  W climb", "Hold F  Drill for resources"] },
         { heading: "▦ BUILD", lines: ["1 / 2 / 3  Select block", "Drag across your grid to build"] },
-        { heading: "⚔ BATTLE", lines: ["Mouse  Aim your cannon", "Click  Fire  •  ↑ / ↓  Power"] },
+        { heading: "⚔ BATTLE", lines: ["Pull back from your tank", "Release to fire  •  ↑ / ↓  Power"] },
         { heading: "◆ WEAPONS", lines: ["1  Shell     2  Missile", "3  Boomerang"] },
       ],
     });
@@ -41,9 +45,9 @@ export class MenuScene extends Phaser.Scene {
       player: "PLAYER 2",
       team: "RED TEAM",
       controls: [
-        { heading: "⛏ MINE", lines: ["← / →  Move tank", "Hold ENTER  Drill for resources"] },
+        { heading: "⛏ MINE", lines: ["← / → move  •  ↑ climb", "Hold ENTER  Drill for resources"] },
         { heading: "▦ BUILD", lines: ["7 / 8 / 9  Select block", "Drag across your grid to build"] },
-        { heading: "⚔ BATTLE", lines: ["Mouse  Aim your cannon", "Click  Fire  •  ↑ / ↓  Power"] },
+        { heading: "⚔ BATTLE", lines: ["Pull back from your tank", "Release to fire  •  ↑ / ↓  Power"] },
         { heading: "◆ WEAPONS", lines: ["4  Shell     5  Missile", "6  Boomerang"] },
       ],
     });
@@ -140,7 +144,7 @@ export class MenuScene extends Phaser.Scene {
 
     drawBackground(0x219653, 0x8cf56e);
 
-    const label = this.add.text(10, 0, "START LOCAL DUEL", {
+    const label = this.add.text(10, 0, "CHOOSE TANKS", {
       fontFamily: "Arial Black, Arial, sans-serif",
       fontSize: "21px",
       color: "#ffffff",
@@ -190,14 +194,65 @@ export class MenuScene extends Phaser.Scene {
         duration: 70,
         yoyo: true,
         onComplete: () => {
-          resetGameState();
-          this.scene.start("MineScene");
+          this.scene.start("TankHangarScene");
         },
       });
     });
 
     this.startButton = button;
     this.buttonBackground = bg;
+  }
+
+  private drawNightModeToggle(): void {
+    const x = GAME_WIDTH / 2;
+    const y = 690;
+    const panel = this.add.rectangle(x, y, 250, 48, 0x17244b, 1)
+      .setStrokeStyle(3, 0x91a5ff, 1)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(5);
+    const label = this.add.text(x, y, "", {
+      fontFamily: "Arial Black, Arial, sans-serif",
+      fontSize: "17px",
+      color: "#ffffff",
+      stroke: "#111a3b",
+      strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(6);
+
+    const refresh = (): void => {
+      label.setText(gameState.nightMode ? "☾  NIGHT MODE: ON" : "☀  NIGHT MODE: OFF");
+      panel.setFillStyle(gameState.nightMode ? 0x17244b : 0x786944);
+      this.nightOverlay.setAlpha(gameState.nightMode ? 0.48 : 0);
+      this.nightDecorations.setVisible(gameState.nightMode);
+    };
+    panel.on("pointerdown", () => {
+      gameState.nightMode = !gameState.nightMode;
+      refresh();
+    });
+    refresh();
+  }
+
+  private createNightLook(): void {
+    // This tint sits above the scenery and tanks but below every menu panel,
+    // so toggling night mode changes the actual start-screen scene immediately.
+    this.nightOverlay = this.add.rectangle(
+      GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x08184f, 0.48,
+    ).setDepth(2.5);
+    this.nightDecorations = this.add.container(0, 0).setDepth(2.6);
+    this.nightDecorations.add([
+      this.add.circle(1392, 127, 53, 0x4e91df, 0.22),
+      this.add.circle(1392, 127, 34, 0xf0f4d2, 0.96).setStrokeStyle(2, 0xdbe7ff, 0.9),
+      this.add.image(190, 622, "night-halo").setTint(0x28c5ff).setDisplaySize(210, 105).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.1),
+      this.add.image(1410, 613, "night-halo").setTint(0xff5968).setDisplaySize(210, 105).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.1),
+    ]);
+    const stars: Array<[number, number, number]> = [
+      [82, 83, 3], [198, 188, 2], [322, 87, 2], [1295, 86, 2],
+      [1467, 212, 3], [1518, 319, 2], [1340, 280, 2], [104, 264, 2],
+      [263, 319, 2], [1254, 204, 2], [1538, 82, 2], [65, 207, 2],
+    ];
+    for (const [x, y, size] of stars) {
+      this.nightDecorations.add(this.add.rectangle(x, y, size, size, 0xffffff, 0.95));
+    }
+    this.nightDecorations.setVisible(gameState.nightMode);
   }
 
   private drawDescription(): void {
@@ -372,12 +427,12 @@ export class MenuScene extends Phaser.Scene {
     g.lineTo(1600, 650);
     g.strokePath();
 
-    this.add.image(190, 654, "tank-blue")
+    this.add.image(190, 654, playerById(1).tankTexture)
       .setOrigin(0.5, 1)
       .setScale(1.1)
       .setDepth(2);
 
-    this.add.image(1410, 645, "tank-red")
+    this.add.image(1410, 645, playerById(2).tankTexture)
       .setOrigin(0.5, 1)
       .setScale(1.1)
       .setDepth(2);
@@ -407,7 +462,7 @@ export class MenuScene extends Phaser.Scene {
   private drawFooter(): void {
     const x = GAME_WIDTH / 2;
 
-    this.add.text(x, 710, "★   TWO PLAYERS     •     ONE SCREEN     •     BIG DESTRUCTION   ★", {
+    this.add.text(x, 755, "★   TWO PLAYERS     •     ONE SCREEN     •     BIG DESTRUCTION   ★", {
       fontFamily: "Arial Black, Arial, sans-serif",
       fontSize: "15px",
       color: "#fff1d1",
@@ -416,7 +471,7 @@ export class MenuScene extends Phaser.Scene {
       letterSpacing: 1,
     }).setOrigin(0.5).setDepth(4);
 
-    this.add.text(x, 740, "TIP: Collect resources first, then build a smart defense!", {
+    this.add.text(x, 785, "TIP: Collect resources first, then build a smart defense!", {
       fontFamily: "Arial, sans-serif",
       fontSize: "16px",
       color: "#e5edf3",
