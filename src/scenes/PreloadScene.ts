@@ -12,12 +12,12 @@ export class PreloadScene extends Phaser.Scene {
     this.createPixelTile("tile-obsidian", "#201a38", ["#382857", "#5a3f88", "#161326", "#7858bd"]);
     this.createOreTile("ore-iron", false);
     this.createOreTile("ore-coal", true);
-    this.createTankTexture("tank-blue", "#087de0", "#28c5ff", false);
-    this.createTankTexture("tank-red", "#d92d2d", "#ff6960", false);
-    this.createTankTexture("tank-gold", "#e99318", "#ffd05a", false);
-    this.createTankTexture("tank-cyan", "#14a9c7", "#73f1ff", false);
-    this.createTankTexture("tank-lime", "#69a91d", "#c8ef45", false);
-    this.createTankTexture("tank-violet", "#7044c7", "#c39aff", false);
+    this.createTankTexture("tank-blue", "#087de0", "#28c5ff", false, "balanced");
+    this.createTankTexture("tank-red", "#d92d2d", "#ff6960", false, "heavy");
+    this.createTankTexture("tank-gold", "#e99318", "#ffd05a", false, "siege");
+    this.createTankTexture("tank-cyan", "#14a9c7", "#73f1ff", false, "twin");
+    this.createTankTexture("tank-lime", "#69a91d", "#c8ef45", false, "rocket");
+    this.createTankTexture("tank-violet", "#7044c7", "#c39aff", false, "scout");
     this.createDrillTexture();
     this.createProjectileTextures();
     this.scene.start("MenuScene");
@@ -94,7 +94,13 @@ export class PreloadScene extends Phaser.Scene {
     texture.refresh();
   }
 
-  private createTankTexture(key: string, baseColor: string, accent: string, mirror: boolean): void {
+  private createTankTexture(
+    key: string,
+    baseColor: string,
+    accent: string,
+    mirror: boolean,
+    model: "balanced" | "heavy" | "siege" | "twin" | "rocket" | "scout",
+  ): void {
     const texture = this.textures.createCanvas(key, 128, 70);
     if (!texture) throw new Error(`Failed to create texture: ${key}`);
 
@@ -105,53 +111,148 @@ export class PreloadScene extends Phaser.Scene {
       ctx.scale(-1, 1);
     }
 
-    // Shadow and tracks.
-    ctx.fillStyle = "rgba(0,0,0,0.28)";
-    ctx.fillRect(9, 54, 110, 9);
-    ctx.fillStyle = "#20242a";
-    ctx.fillRect(12, 43, 105, 20);
-    ctx.fillStyle = "#50565c";
-    ctx.fillRect(17, 47, 95, 11);
-    for (const x of [21, 39, 57, 75, 93, 108]) {
-      ctx.fillStyle = "#1b2025";
-      ctx.beginPath(); ctx.arc(x, 53, 7, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = "#879097";
-      ctx.beginPath(); ctx.arc(x, 53, 4, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = "#3c444b";
-      ctx.fillRect(x - 1, 50, 2, 6);
+    const adjust = (hex: string, amount: number): string => {
+      const value = Number.parseInt(hex.slice(1), 16);
+      const channels = [(value >> 16) & 255, (value >> 8) & 255, value & 255]
+        .map((channel) => Math.max(0, Math.min(255, Math.round(channel + (amount >= 0 ? 255 - channel : channel) * amount))));
+      return `rgb(${channels[0]},${channels[1]},${channels[2]})`;
+    };
+    const dark = adjust(baseColor, -0.48);
+    const light = adjust(baseColor, 0.35);
+
+    // Layered tracks, wheels, and a cast shadow give the small sprite volume.
+    ctx.fillStyle = "rgba(0,0,0,0.32)";
+    ctx.beginPath(); ctx.ellipse(65, 62, 57, 5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#141a21";
+    ctx.beginPath(); ctx.roundRect(8, 43, 112, 22, 10); ctx.fill();
+    ctx.fillStyle = "#59616b";
+    ctx.beginPath(); ctx.roundRect(13, 46, 102, 15, 7); ctx.fill();
+    ctx.fillStyle = "#222a34";
+    ctx.beginPath(); ctx.roundRect(15, 48, 98, 12, 6); ctx.fill();
+    for (const [index, x] of [21, 39, 57, 75, 93, 108].entries()) {
+      const wheel = ctx.createLinearGradient(x - 5, 0, x + 5, 0);
+      wheel.addColorStop(0, "#343d48"); wheel.addColorStop(0.5, "#a2adb7"); wheel.addColorStop(1, "#343d48");
+      ctx.fillStyle = "#11171d";
+      ctx.beginPath(); ctx.arc(x, 54, 7.5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = wheel;
+      ctx.beginPath(); ctx.arc(x, 54, 5.2, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#39434d";
+      ctx.beginPath(); ctx.arc(x, 54, 2.2, 0, Math.PI * 2); ctx.fill();
+      if (index % 2 === 0) {
+        ctx.fillStyle = "rgba(230,240,246,0.56)";
+        ctx.fillRect(x - 1, 48, 2, 2);
+      }
+    }
+    ctx.strokeStyle = "rgba(210,222,230,0.34)";
+    ctx.lineWidth = 1;
+    for (let x = 14; x < 116; x += 9) {
+      ctx.beginPath(); ctx.moveTo(x, 61); ctx.lineTo(x + 4, 63); ctx.stroke();
     }
 
-    // Hull and dark outline.
-    ctx.fillStyle = "#11171d";
+    // Faceted hull with a bright top plane and a darker lower armor skirt.
+    ctx.fillStyle = "#10161d";
     ctx.beginPath();
-    ctx.moveTo(17, 43); ctx.lineTo(27, 28); ctx.lineTo(91, 28); ctx.lineTo(111, 43); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = baseColor;
+    ctx.moveTo(13, 46); ctx.lineTo(22, 33); ctx.lineTo(38, 27); ctx.lineTo(93, 28);
+    ctx.lineTo(111, 38); ctx.lineTo(119, 47); ctx.lineTo(111, 51); ctx.lineTo(19, 51); ctx.closePath(); ctx.fill();
+    const hull = ctx.createLinearGradient(18, 26, 20, 52);
+    hull.addColorStop(0, light); hull.addColorStop(0.36, baseColor); hull.addColorStop(1, dark);
+    ctx.fillStyle = hull;
     ctx.beginPath();
-    ctx.moveTo(21, 40); ctx.lineTo(31, 31); ctx.lineTo(88, 31); ctx.lineTo(105, 40); ctx.lineTo(109, 43); ctx.lineTo(20, 43); ctx.closePath(); ctx.fill();
+    ctx.moveTo(18, 44); ctx.lineTo(26, 34); ctx.lineTo(39, 30); ctx.lineTo(91, 30);
+    ctx.lineTo(106, 38); ctx.lineTo(114, 45); ctx.lineTo(108, 48); ctx.lineTo(21, 48); ctx.closePath(); ctx.fill();
     ctx.fillStyle = accent;
-    ctx.fillRect(31, 33, 57, 3);
-    ctx.fillStyle = "rgba(255,255,255,0.24)";
-    ctx.fillRect(27, 39, 70, 2);
+    ctx.beginPath(); ctx.moveTo(27, 34); ctx.lineTo(40, 31); ctx.lineTo(89, 31); ctx.lineTo(97, 35); ctx.lineTo(37, 35); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,0.3)";
+    ctx.beginPath(); ctx.moveTo(24, 41); ctx.lineTo(33, 36); ctx.lineTo(80, 36); ctx.lineTo(74, 38); ctx.lineTo(31, 39); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = dark;
+    ctx.beginPath(); ctx.moveTo(29, 42); ctx.lineTo(102, 42); ctx.lineTo(110, 47); ctx.lineTo(22, 47); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = accent;
+    ctx.fillRect(32, 43, 5, 2); ctx.fillRect(42, 43, 5, 2); ctx.fillRect(91, 43, 5, 2);
+    for (const [x, y] of [[31, 37], [47, 33], [82, 34], [103, 40]]) {
+      ctx.fillStyle = "rgba(19,27,34,0.68)";
+      ctx.beginPath(); ctx.arc(x, y, 1.5, 0, Math.PI * 2); ctx.fill();
+    }
 
-    // Turret and barrel.
-    ctx.fillStyle = "#11171d";
-    ctx.fillRect(53, 21, 50, 12);
-    ctx.fillRect(88, 24, 29, 6);
-    ctx.fillStyle = baseColor;
-    ctx.fillRect(56, 20, 44, 10);
-    ctx.fillRect(91, 25, 27, 4);
+    const drawBarrel = (y: number, thickness: number, length: number): void => {
+      ctx.fillStyle = "#111820";
+      ctx.beginPath(); ctx.roundRect(78, y - thickness / 2, length, thickness, thickness / 2); ctx.fill();
+      const barrel = ctx.createLinearGradient(0, y - thickness / 2, 0, y + thickness / 2);
+      barrel.addColorStop(0, "#eff7ff"); barrel.addColorStop(0.42, "#a8bac9"); barrel.addColorStop(1, "#526575");
+      ctx.fillStyle = barrel;
+      ctx.beginPath(); ctx.roundRect(80, y - thickness / 2 + 1, length - 3, thickness - 2, thickness / 2); ctx.fill();
+      ctx.fillStyle = accent;
+      ctx.fillRect(87, y - 1, Math.max(7, length - 34), 2);
+      ctx.fillStyle = "#283440";
+      ctx.fillRect(78 + length - 10, y - thickness / 2 - 1, 4, thickness + 2);
+      ctx.fillStyle = "#dce9f2";
+      ctx.fillRect(78 + length - 4, y - thickness / 2 + 2, 2, thickness - 4);
+    };
+
+    // Each collectible has its own turret and weapon silhouette.
+    if (model === "twin") {
+      drawBarrel(22, 5, 45); drawBarrel(30, 5, 48);
+    } else if (model === "heavy") {
+      drawBarrel(27, 10, 49);
+    } else if (model === "siege") {
+      drawBarrel(24, 8, 54);
+    } else if (model === "balanced") {
+      drawBarrel(27, 7, 46);
+    } else if (model === "scout") {
+      drawBarrel(28, 4, 50);
+    }
+
+    const turretBox = model === "heavy" ? { x: 40, y: 15, w: 55, h: 20 }
+      : model === "siege" ? { x: 34, y: 13, w: 56, h: 23 }
+      : model === "rocket" ? { x: 46, y: 12, w: 53, h: 25 }
+      : model === "scout" ? { x: 53, y: 20, w: 39, h: 15 }
+      : model === "twin" ? { x: 43, y: 17, w: 48, h: 18 }
+      : { x: 46, y: 17, w: 48, h: 18 };
+    ctx.fillStyle = "#111820";
+    ctx.beginPath(); ctx.roundRect(turretBox.x - 3, turretBox.y - 2, turretBox.w + 6, turretBox.h + 5, 7); ctx.fill();
+    const turret = ctx.createLinearGradient(0, turretBox.y, 0, turretBox.y + turretBox.h + 3);
+    turret.addColorStop(0, light); turret.addColorStop(0.48, baseColor); turret.addColorStop(1, dark);
+    ctx.fillStyle = turret;
+    ctx.beginPath(); ctx.roundRect(turretBox.x, turretBox.y, turretBox.w, turretBox.h, 6); ctx.fill();
     ctx.fillStyle = accent;
-    ctx.fillRect(64, 21, 24, 2);
-    ctx.fillStyle = "rgba(0,0,0,0.28)";
-    ctx.fillRect(102, 25, 13, 2);
-    ctx.fillStyle = "#0e2637";
-    ctx.fillRect(68, 12, 21, 10);
-    ctx.fillStyle = baseColor;
-    ctx.fillRect(70, 11, 19, 10);
-    ctx.fillStyle = accent;
-    ctx.fillRect(72, 12, 12, 3);
-    ctx.fillStyle = "#15191e";
-    ctx.fillRect(9, 42, 110, 3);
+    ctx.beginPath(); ctx.roundRect(turretBox.x + 5, turretBox.y + 3, turretBox.w - 15, 3, 2); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,0.28)";
+    ctx.beginPath(); ctx.roundRect(turretBox.x + 4, turretBox.y + 7, 7, turretBox.h - 11, 3); ctx.fill();
+
+    if (model === "rocket") {
+      // Original six-cell rocket pod instead of a conventional cannon.
+      ctx.fillStyle = "#15212a";
+      ctx.beginPath(); ctx.roundRect(55, 15, 40, 24, 5); ctx.fill();
+      ctx.fillStyle = light;
+      ctx.beginPath(); ctx.roundRect(58, 16, 35, 20, 4); ctx.fill();
+      for (const [cx, cy] of [[65, 21], [77, 21], [88, 21], [65, 30], [77, 30], [88, 30]]) {
+        ctx.fillStyle = "#24303a";
+        ctx.beginPath(); ctx.arc(cx, cy, 3.5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = accent;
+        ctx.beginPath(); ctx.arc(cx - 0.6, cy - 0.6, 1.5, 0, Math.PI * 2); ctx.fill();
+      }
+    } else if (model === "scout") {
+      ctx.fillStyle = "#111820";
+      ctx.fillRect(66, 13, 2, 10);
+      ctx.fillStyle = accent;
+      ctx.beginPath(); ctx.arc(67, 12, 2.4, 0, Math.PI * 2); ctx.fill();
+    } else {
+      ctx.fillStyle = "#101820";
+      ctx.beginPath(); ctx.roundRect(58, turretBox.y - 7, model === "heavy" ? 25 : 19, 10, 4); ctx.fill();
+      ctx.fillStyle = baseColor;
+      ctx.beginPath(); ctx.roundRect(60, turretBox.y - 8, model === "heavy" ? 22 : 16, 9, 4); ctx.fill();
+      ctx.fillStyle = accent;
+      ctx.fillRect(63, turretBox.y - 6, 10, 2);
+    }
+
+    // Glazed optics, panel seams, and a tiny headlamp add readable detail at game scale.
+    ctx.fillStyle = "#16242e";
+    ctx.beginPath(); ctx.roundRect(72, 22, 10, 5, 2); ctx.fill();
+    ctx.fillStyle = "#b8f8ff";
+    ctx.beginPath(); ctx.roundRect(73, 23, 7, 2, 1); ctx.fill();
+    ctx.fillStyle = "#fff4a6";
+    ctx.beginPath(); ctx.arc(111, 43, 2.2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,0.2)";
+    ctx.fillRect(25, 48, 76, 1);
     texture.refresh();
   }
 
