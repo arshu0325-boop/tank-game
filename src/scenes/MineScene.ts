@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { addBlockImage, GAME_HEIGHT, GAME_WIDTH, MINE_COLS, MINE_ROWS, TILE_SIZE, drawSky, formatTime } from "../grid";
-import { gameState, playerById, type PlayerId, type TileType } from "../state";
+import { gameState, MAX_HP, playerById, type PlayerId, type TileType } from "../state";
 
 interface MineCell {
   col: number;
@@ -16,6 +16,8 @@ interface MineCell {
 
 const MINE_ORIGIN_Y = 250;
 const MINE_SECONDS = 23;
+const MINE_MOVE_SPEED = 185;
+const MINE_FUEL_PER_PIXEL = 0.04;
 
 export class MineScene extends Phaser.Scene {
   private cells = new Map<string, MineCell>();
@@ -23,26 +25,32 @@ export class MineScene extends Phaser.Scene {
   private timeLeft = MINE_SECONDS;
   private transitioning = false;
   private hudGraphics!: Phaser.GameObjects.Graphics;
+  private timerGraphics!: Phaser.GameObjects.Graphics;
   private timeText!: Phaser.GameObjects.Text;
   private p1Label!: Phaser.GameObjects.Text;
   private p2Label!: Phaser.GameObjects.Text;
   private resourceText!: Phaser.GameObjects.Text;
   private hintText!: Phaser.GameObjects.Text;
+  private tanks!: Record<PlayerId, Phaser.GameObjects.Image>;
+  private drillGraphics!: Phaser.GameObjects.Graphics;
+  private surfaceRows: number[] = [];
+  private mineCooldown: Record<PlayerId, number> = { 1: 0, 2: 0 };
+  private keys!: {
+    p1Left: Phaser.Input.Keyboard.Key;
+    p1Right: Phaser.Input.Keyboard.Key;
+    p2Left: Phaser.Input.Keyboard.Key;
+    p2Right: Phaser.Input.Keyboard.Key;
+    p1Mine: Phaser.Input.Keyboard.Key;
+    p2Mine: Phaser.Input.Keyboard.Key;
+  };
   private getBlockHp(type: TileType): number {
-  switch (type) {
-    case "dirt":
-      return 2;
-
-    case "stone":
-      return 4;
-
-    case "obsidian":
-      return 10;
-
-    default:
-      return 1;
+    switch (type) {
+      case "dirt": return 2;
+      case "stone": return 4;
+      case "obsidian": return 10;
+      default: return 1;
+    }
   }
-}
   
   constructor() {
     super("MineScene");
@@ -57,9 +65,18 @@ export class MineScene extends Phaser.Scene {
     drawSky(this);
     this.createWorld();
     this.createHud();
-    this.input.on("pointerdown", this.handlePointerDown, this);
+    if (this.input.keyboard) {
+      this.keys = this.input.keyboard.addKeys({
+        p1Left: Phaser.Input.Keyboard.KeyCodes.A,
+        p1Right: Phaser.Input.Keyboard.KeyCodes.D,
+        p2Left: Phaser.Input.Keyboard.KeyCodes.LEFT,
+        p2Right: Phaser.Input.Keyboard.KeyCodes.RIGHT,
+        p1Mine: Phaser.Input.Keyboard.KeyCodes.F,
+        p2Mine: Phaser.Input.Keyboard.KeyCodes.ENTER,
+      }) as typeof this.keys;
+    }
     this.hintText = this.add.text(GAME_WIDTH / 2, 210,
-      "MINE PHASE  •  Click blocks on your half to collect dirt, stone, obsidian and iron ore", {
+      "DRIVE: P1 A / D  •  P2 ← / →     HOLD TO DRILL: P1 F  •  P2 ENTER", {
         fontFamily: "Arial Black, Arial, sans-serif", fontSize: "19px", color: "#fff4cf",
         stroke: "#27313b", strokeThickness: 5, align: "center",
       }).setOrigin(0.5).setDepth(20);
@@ -71,6 +88,20 @@ export class MineScene extends Phaser.Scene {
     this.elapsed += delta / 1000;
     this.timeLeft = Math.max(0, MINE_SECONDS - this.elapsed);
     this.timeText.setText(formatTime(this.timeLeft));
+    this.drawMineTimerBar();
+    this.updateTankMovement(delta / 1000);
+    this.drawDrills();
+    this.updateHud();
+    if (this.input.keyboard && this.keys) {
+      for (const id of [1, 2] as PlayerId[]) {
+        this.mineCooldown[id] = Math.max(0, this.mineCooldown[id] - delta / 1000);
+        const drilling = id === 1 ? this.keys.p1Mine.isDown : this.keys.p2Mine.isDown;
+        if (drilling && this.mineCooldown[id] <= 0) {
+          this.mineAtFront(id);
+          this.mineCooldown[id] = 0.28;
+        }
+      }
+    }
     if (this.timeLeft <= 0) {
       this.transitioning = true;
       this.scene.start("BuildScene");
@@ -78,10 +109,10 @@ export class MineScene extends Phaser.Scene {
   }
 
   private createWorld(): void {
-    const surfaceRows: number[] = [];
+    this.surfaceRows = [];
     for (let col = 0; col < MINE_COLS; col++) {
       const surface = Math.max(2, Math.min(5, 3 + Math.round(Math.sin(col * 0.31) * 1.15 + Math.sin(col * 0.12) * 0.65)));
-      surfaceRows.push(surface);
+      this.surfaceRows.push(surface);
       for (let row = surface; row < MINE_ROWS; row++) {
         let type: TileType;
         let ore: "iron" | "coal" | undefined;
@@ -121,7 +152,7 @@ export class MineScene extends Phaser.Scene {
     const ground = this.add.graphics().setDepth(3);
     ground.fillStyle(0x3d772f, 1);
     for (let col = 0; col < MINE_COLS; col++) {
-      const y = MINE_ORIGIN_Y + surfaceRows[col] * TILE_SIZE;
+      const y = MINE_ORIGIN_Y + this.surfaceRows[col] * TILE_SIZE;
       ground.fillRect(col * TILE_SIZE, y - 5, TILE_SIZE, 5);
       ground.fillStyle(0x6eaa43, 1);
       ground.fillRect(col * TILE_SIZE, y - 5, TILE_SIZE, 2);
@@ -130,10 +161,14 @@ export class MineScene extends Phaser.Scene {
 
     const p1X = 160;
     const p2X = 1440;
-    const p1Ground = MINE_ORIGIN_Y + surfaceRows[Math.floor(p1X / TILE_SIZE)] * TILE_SIZE;
-    const p2Ground = MINE_ORIGIN_Y + surfaceRows[Math.floor(p2X / TILE_SIZE)] * TILE_SIZE;
-    this.add.image(p1X, p1Ground, "tank-blue").setOrigin(0.5, 1).setScale(0.95).setDepth(8);
-    this.add.image(p2X, p2Ground, "tank-red").setOrigin(0.5, 1).setScale(0.95).setDepth(8);
+    const p1Ground = MINE_ORIGIN_Y + this.surfaceRows[Math.floor(p1X / TILE_SIZE)] * TILE_SIZE;
+    const p2Ground = MINE_ORIGIN_Y + this.surfaceRows[Math.floor(p2X / TILE_SIZE)] * TILE_SIZE;
+    this.tanks = {
+      1: this.add.image(p1X, p1Ground, "tank-blue").setOrigin(0.5, 1).setScale(0.95).setDepth(8),
+      2: this.add.image(p2X, p2Ground, "tank-red").setOrigin(0.5, 1).setScale(0.95).setDepth(8),
+    };
+    this.drillGraphics = this.add.graphics().setDepth(9);
+    this.drawDrills();
 
     // Drill sparks and a subtle center divider make the two mining areas obvious.
     const divider = this.add.graphics().setDepth(12);
@@ -147,8 +182,8 @@ export class MineScene extends Phaser.Scene {
     this.hudGraphics = this.add.graphics().setDepth(25);
     this.add.text(48, 27, "P1: Controller", this.panelTitleStyle()).setDepth(26);
     this.add.text(1305, 27, "P2: Duelist", this.panelTitleStyle()).setDepth(26);
-    this.p1Label = this.add.text(48, 66, "HP 100   Fuel 100", this.panelDetailStyle()).setDepth(26);
-    this.p2Label = this.add.text(1305, 66, "HP 100   Fuel 100", this.panelDetailStyle()).setDepth(26);
+    this.p1Label = this.add.text(48, 66, `HP ${MAX_HP}   Fuel 100`, this.panelDetailStyle()).setDepth(26);
+    this.p2Label = this.add.text(1305, 66, `HP ${MAX_HP}   Fuel 100`, this.panelDetailStyle()).setDepth(26);
     this.add.rectangle(GAME_WIDTH / 2, 42, 420, 62, 0x552b18, 0.94).setStrokeStyle(4, 0xffbe43, 1).setDepth(25);
     this.add.text(GAME_WIDTH / 2, 41, "MINE & CRAFT PHASE", {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "31px", color: "#fff5e5",
@@ -158,121 +193,129 @@ export class MineScene extends Phaser.Scene {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "42px", color: "#ffe12f",
       stroke: "#211d0a", strokeThickness: 7,
     }).setOrigin(0.5).setDepth(26);
+    this.timerGraphics = this.add.graphics().setDepth(26);
+    this.drawMineTimerBar();
+    this.tweens.add({ targets: this.timerGraphics, alpha: 0.72, duration: 520, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
+    this.tweens.add({ targets: this.timeText, scale: 1.045, duration: 720, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
     this.resourceText = this.add.text(GAME_WIDTH / 2, 875, "", {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "18px", color: "#f9f3dc",
       stroke: "#101820", strokeThickness: 4, align: "center",
     }).setOrigin(0.5).setDepth(27);
   }
 
-  private handlePointerDown(pointer: Phaser.Input.Pointer): void {
-  if (this.transitioning || pointer.y < MINE_ORIGIN_Y) return;
+  private updateTankMovement(deltaSeconds: number): void {
+    if (!this.input.keyboard || !this.keys) return;
+    for (const id of [1, 2] as PlayerId[]) {
+      const player = playerById(id);
+      const tank = this.tanks[id];
+      const left = id === 1 ? this.keys.p1Left.isDown : this.keys.p2Left.isDown;
+      const right = id === 1 ? this.keys.p1Right.isDown : this.keys.p2Right.isDown;
+      const direction = Number(right) - Number(left);
+      if (!direction || player.fuel <= 0) continue;
 
-  const col = Math.floor(pointer.x / TILE_SIZE);
-  const row = Math.floor(
-    (pointer.y - MINE_ORIGIN_Y) / TILE_SIZE
-  );
-
-  if (
-    col < 0 ||
-    col >= MINE_COLS ||
-    row < 0 ||
-    row >= MINE_ROWS
-  ) {
-    return;
+      const minX = id === 1 ? 42 : GAME_WIDTH / 2 + 42;
+      const maxX = id === 1 ? GAME_WIDTH / 2 - 42 : GAME_WIDTH - 42;
+      const safeDelta = Math.min(deltaSeconds, 0.05);
+      const desiredMove = direction * MINE_MOVE_SPEED * safeDelta;
+      const fuelMove = player.fuel / MINE_FUEL_PER_PIXEL;
+      const move = Math.sign(desiredMove) * Math.min(Math.abs(desiredMove), fuelMove);
+      const nextX = Phaser.Math.Clamp(tank.x + move, minX, maxX);
+      const distanceMoved = Math.abs(nextX - tank.x);
+      if (distanceMoved <= 0) continue;
+      tank.x = nextX;
+      const column = Phaser.Math.Clamp(Math.floor(tank.x / TILE_SIZE), id === 1 ? 0 : MINE_COLS / 2, id === 1 ? MINE_COLS / 2 - 1 : MINE_COLS - 1);
+      tank.y = MINE_ORIGIN_Y + this.surfaceRows[column] * TILE_SIZE;
+      player.fuel = Math.max(0, player.fuel - distanceMoved * MINE_FUEL_PER_PIXEL);
+    }
   }
 
-  const key = this.cellKey(col, row);
-  const cell = this.cells.get(key);
-
-  if (!cell) return;
-
-  // P1 can only mine the left half.
-  // P2 can only mine the right half.
-  const id: PlayerId =
-    pointer.x < GAME_WIDTH / 2 ? 1 : 2;
-
-  if (
-    (id === 1 && pointer.x >= GAME_WIDTH / 2) ||
-    (id === 2 && pointer.x < GAME_WIDTH / 2)
-  ) {
-    return;
+  private drawDrills(): void {
+    const g = this.drillGraphics;
+    if (!g || !this.tanks) return;
+    g.clear();
+    for (const id of [1, 2] as PlayerId[]) {
+      const tank = this.tanks[id];
+      const dir = id === 1 ? 1 : -1;
+      const centerX = tank.x + dir * 43;
+      const centerY = tank.y - 22;
+      const drilling = id === 1 ? this.keys?.p1Mine.isDown : this.keys?.p2Mine.isDown;
+      const spin = this.elapsed * (drilling ? 18 : 2.5) * dir;
+      g.lineStyle(7, 0x59656a, 1);
+      g.lineBetween(tank.x + dir * 20, centerY, centerX, centerY);
+      g.lineStyle(2, 0xc8e0e8, 0.95);
+      g.strokeCircle(centerX, centerY, 13);
+      const points: Phaser.Geom.Point[] = [];
+      for (let tooth = 0; tooth < 12; tooth++) {
+        const angle = spin + tooth * Math.PI / 6;
+        const radius = tooth % 2 === 0 ? 17 : 10;
+        points.push(new Phaser.Geom.Point(centerX + Math.cos(angle) * radius, centerY + Math.sin(angle) * radius));
+      }
+      g.fillStyle(0xa6bbc2, 1);
+      g.fillPoints(points, true);
+      g.fillStyle(id === 1 ? 0x3fcaff : 0xff7770, 1).fillCircle(centerX, centerY, 4);
+    }
   }
 
-  // Only the exposed block can be mined.
-  // A block with another block directly above it is buried.
-  const blockAbove = this.cells.get(
-    this.cellKey(col, row - 1)
-  );
+  private mineAtFront(id: PlayerId): void {
+    if (this.transitioning) return;
+    const tank = this.tanks[id];
+    const dir = id === 1 ? 1 : -1;
+    const col = Phaser.Math.Clamp(Math.floor((tank.x + dir * 43) / TILE_SIZE), id === 1 ? 0 : MINE_COLS / 2, id === 1 ? MINE_COLS / 2 - 1 : MINE_COLS - 1);
+    let target: MineCell | undefined;
+    for (let row = 0; row < MINE_ROWS; row++) {
+      const cell = this.cells.get(this.cellKey(col, row));
+      if (cell && !this.cells.has(this.cellKey(col, row - 1))) {
+        target = cell;
+        break;
+      }
+    }
+    if (!target) {
+      this.showMiningMessage(tank.x + dir * 55, tank.y - 42, "MOVE TO A BLOCK", "#fff0a1");
+      return;
+    }
 
-  if (blockAbove) {
-    this.showMiningMessage(
-      pointer.x,
-      pointer.y,
-      "Mine the block above first!",
-      "#ffd75a"
-    );
+    const x = target.col * TILE_SIZE + TILE_SIZE / 2;
+    const y = MINE_ORIGIN_Y + target.row * TILE_SIZE + TILE_SIZE / 2;
+    target.hp--;
+    target.image.setAlpha(0.55 + 0.45 * target.hp / target.maxHp);
+    this.drawMiningCracks(target);
+    this.emitBlockParticles(x, y, target.type === "dirt" ? 0xb7794c : target.type === "stone" ? 0x9ca4a7 : 0x9c82c2, 5);
+    this.tweens.add({ targets: target.image, angle: { from: -4, to: 4 }, yoyo: true, duration: 45, repeat: 1 });
+    if (target.hp > 0) {
+      this.showMiningMessage(x, y - 12, `${target.hp} HP`, id === 1 ? "#73d8ff" : "#ff9a8c");
+      return;
+    }
 
-    return;
+    const player = playerById(id);
+    player.inventory[target.type] += 1;
+    if (target.ore === "iron") player.iron += 1;
+    this.emitBlockParticles(x, y, target.ore === "iron" ? 0xffd05b : 0xd3a06e, 14);
+    this.tweens.add({
+      targets: target.image, scale: 0.2, alpha: 0, duration: 120,
+      onComplete: () => target.image.destroy(),
+    });
+    target.crack?.destroy();
+    this.cells.delete(this.cellKey(target.col, target.row));
+    const itemLabel = target.ore === "iron" ? `+1 ${target.type}  +1 iron` : `+1 ${target.type}`;
+    this.showMiningMessage(x, y - 10, itemLabel, id === 1 ? "#73d8ff" : "#ff9a8c");
   }
 
-  // Damage the block.
-  cell.hp--;
-
-  // Make damaged blocks slightly transparent.
-  const healthRatio = cell.hp / cell.maxHp;
-
-// Make the block darker as it takes damage.
-cell.image.setAlpha();
-
-cell.image.setTint();
-this.drawMiningCracks(cell);
-
-  // Show remaining HP.
-  this.showMiningMessage(
-    pointer.x,
-    pointer.y,
-    cell.hp > 0
-      ? `${cell.hp} HP left`
-      : "BREAK!",
-    id === 1 ? "#73d8ff" : "#ff9a8c"
-  );
-
-  // The block hasn't broken yet.
-  if (cell.hp > 0) {
-    return;
+  private emitBlockParticles(x: number, y: number, color: number, count: number): void {
+    for (let i = 0; i < count; i++) {
+      const particle = this.add.rectangle(x, y, Phaser.Math.Between(3, 6), Phaser.Math.Between(3, 6), color, 1).setDepth(10);
+      const drift = Phaser.Math.Between(-30, 30);
+      this.tweens.add({
+        targets: particle,
+        x: x + drift,
+        y: y + Phaser.Math.Between(12, 48),
+        angle: Phaser.Math.Between(-180, 180),
+        alpha: 0,
+        duration: Phaser.Math.Between(280, 520),
+        ease: "Cubic.easeIn",
+        onComplete: () => particle.destroy(),
+      });
+    }
   }
-
-  // The block has broken.
-  const player = playerById(id);
-
-  player.inventory[cell.type] += 1;
-
-  if (cell.ore === "iron") {
-    player.iron += 1;
-  }
-
-  // Remove the block visually.
-  cell.image.destroy();
-  cell.crack?.destroy();
-
-  // Remove the block from the mine.
-  this.cells.delete(key);
-
-  // Show reward.
-  const itemLabel =
-    cell.ore === "iron"
-      ? `+1 ${cell.type}  +1 iron`
-      : `+1 ${cell.type}`;
-
-  this.showMiningMessage(
-    pointer.x,
-    pointer.y,
-    itemLabel,
-    id === 1 ? "#73d8ff" : "#ff9a8c"
-  );
-
-  this.updateHud();
-}  
 
   private updateHud(): void {
     this.hudGraphics.clear();
@@ -282,12 +325,12 @@ this.drawMiningCracks(cell);
     this.hudGraphics.lineStyle(3, 0x3098f5, 1).strokeRoundedRect(18, 16, 306, 94, 14);
     this.hudGraphics.fillStyle(0x462b2b, 0.92).fillRoundedRect(1276, 16, 306, 94, 14);
     this.hudGraphics.lineStyle(3, 0xf05252, 1).strokeRoundedRect(1276, 16, 306, 94, 14);
-    this.drawBar(165, 64, 145, 12, p1.hp / 100, 0x4fd65c);
+    this.drawBar(165, 64, 145, 12, p1.hp / MAX_HP, 0x4fd65c);
     this.drawBar(165, 88, 145, 12, p1.fuel / 100, 0xf6bd43);
-    this.drawBar(1420, 64, 145, 12, p2.hp / 100, 0x4fd65c);
+    this.drawBar(1420, 64, 145, 12, p2.hp / MAX_HP, 0x4fd65c);
     this.drawBar(1420, 88, 145, 12, p2.fuel / 100, 0xf6bd43);
-    this.p1Label.setText(`HP ${p1.hp}   Fuel ${p1.fuel}`);
-    this.p2Label.setText(`HP ${p2.hp}   Fuel ${p2.fuel}`);
+    this.p1Label.setText(`HP ${p1.hp}   Fuel ${Math.ceil(p1.fuel)}`);
+    this.p2Label.setText(`HP ${p2.hp}   Fuel ${Math.ceil(p2.fuel)}`);
     this.resourceText.setText(
       `P1  Dirt ${p1.inventory.dirt}  Stone ${p1.inventory.stone}  Obsidian ${p1.inventory.obsidian}  Iron ${p1.iron}` +
       `     |     P2  Dirt ${p2.inventory.dirt}  Stone ${p2.inventory.stone}  Obsidian ${p2.inventory.obsidian}  Iron ${p2.iron}`,
@@ -295,9 +338,24 @@ this.drawMiningCracks(cell);
   }
 
   private drawBar(x: number, y: number, w: number, h: number, ratio: number, color: number): void {
+    const fillWidth = Math.max(0, (w - 4) * Phaser.Math.Clamp(ratio, 0, 1));
+    if (fillWidth > 0) this.hudGraphics.fillStyle(color, 0.22).fillRoundedRect(x - 3, y - 3, fillWidth + 10, h + 6, 5);
     this.hudGraphics.fillStyle(0x12171b, 1).fillRect(x, y, w, h);
     this.hudGraphics.lineStyle(2, 0x090d10, 1).strokeRect(x, y, w, h);
-    this.hudGraphics.fillStyle(color, 1).fillRect(x + 2, y + 2, Math.max(0, (w - 4) * ratio), h - 4);
+    this.hudGraphics.fillStyle(color, 1).fillRect(x + 2, y + 2, fillWidth, h - 4);
+  }
+
+  private drawMineTimerBar(): void {
+    if (!this.timerGraphics) return;
+    const x = GAME_WIDTH / 2 - 160;
+    const y = 126;
+    const width = 320;
+    const fill = width * Phaser.Math.Clamp(this.timeLeft / MINE_SECONDS, 0, 1);
+    this.timerGraphics.clear();
+    if (fill > 0) this.timerGraphics.fillStyle(0xffd34f, 0.3).fillRoundedRect(x - 4, y - 4, fill + 8, 20, 7);
+    this.timerGraphics.fillStyle(0x15212a, 0.98).fillRoundedRect(x, y, width, 12, 5);
+    this.timerGraphics.fillStyle(0xffd34f, 1).fillRoundedRect(x + 2, y + 2, Math.max(0, fill - 4), 8, 3);
+    this.timerGraphics.lineStyle(1, 0xffef9a, 0.95).strokeRoundedRect(x, y, width, 12, 5);
   }
   private drawMiningCracks(cell: MineCell): void {
   if (!cell.crack) return;

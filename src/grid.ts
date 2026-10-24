@@ -41,7 +41,7 @@ export function drawSky(scene: Phaser.Scene, warmer = false): Phaser.GameObjects
   const g = scene.add.graphics();
   g.fillStyle(warmer ? 0x7f9bab : 0x7193a6, 1);
   g.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-  g.fillStyle(0xb6cbd1, 0.52);
+  g.fillStyle(0xffffff, 0.94);
   const clouds = [
     [90, 150, 210, 50], [180, 132, 165, 54], [340, 160, 190, 42],
     [720, 130, 190, 42], [820, 155, 240, 56], [1035, 120, 170, 45],
@@ -52,16 +52,26 @@ export function drawSky(scene: Phaser.Scene, warmer = false): Phaser.GameObjects
     g.fillEllipse(x - w * 0.22, y + 10, w * 0.62, h * 0.7);
     g.fillEllipse(x + w * 0.22, y + 8, w * 0.58, h * 0.75);
   }
+  const curvePoints: Phaser.Geom.Point[] = [];
+  const segments = [
+    [0, 480, 70, 458, 112, 402, 205, 394],
+    [205, 394, 300, 382, 354, 451, 478, 438],
+    [478, 438, 594, 424, 646, 361, 772, 376],
+    [772, 376, 892, 388, 926, 465, 1050, 452],
+    [1050, 452, 1164, 440, 1195, 386, 1318, 402],
+    [1318, 402, 1438, 418, 1510, 384, 1600, 436],
+  ];
+  for (const [x0, y0, x1, y1, x2, y2, x3, y3] of segments) {
+    for (let step = curvePoints.length ? 1 : 0; step <= 16; step++) {
+      const t = step / 16;
+      const u = 1 - t;
+      const x = u ** 3 * x0 + 3 * u ** 2 * t * x1 + 3 * u * t ** 2 * x2 + t ** 3 * x3;
+      const y = u ** 3 * y0 + 3 * u ** 2 * t * y1 + 3 * u * t ** 2 * y2 + t ** 3 * y3;
+      curvePoints.push(new Phaser.Geom.Point(x, y));
+    }
+  }
   g.fillStyle(0x587d75, 0.52);
-  g.fillPoints([
-    new Phaser.Geom.Point(0, 460), new Phaser.Geom.Point(135, 390),
-    new Phaser.Geom.Point(260, 438), new Phaser.Geom.Point(420, 365),
-    new Phaser.Geom.Point(600, 440), new Phaser.Geom.Point(780, 388),
-    new Phaser.Geom.Point(960, 452), new Phaser.Geom.Point(1120, 390),
-    new Phaser.Geom.Point(1320, 425), new Phaser.Geom.Point(1500, 368),
-    new Phaser.Geom.Point(1600, 420), new Phaser.Geom.Point(1600, 900),
-    new Phaser.Geom.Point(0, 900),
-  ], true);
+  g.fillPoints([...curvePoints, new Phaser.Geom.Point(GAME_WIDTH, GAME_HEIGHT), new Phaser.Geom.Point(0, GAME_HEIGHT)], true);
   return g;
 }
 

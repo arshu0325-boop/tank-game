@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { GAME_WIDTH, drawSky } from "../grid";
-import { gameState, playerById, resetGameState } from "../state";
+import { gameState, MAX_HP, playerById, resetGameState } from "../state";
 
 export class ResultScene extends Phaser.Scene {
   constructor() {
@@ -52,7 +52,7 @@ export class ResultScene extends Phaser.Scene {
       fontFamily: "Arial", fontSize: "19px", color: "#d9e2e5", stroke: "#111820", strokeThickness: 3,
     }).setOrigin(0.5);
     this.add.rectangle(x, 590, 280, 14, 0x101418, 1).setStrokeStyle(2, 0x080b0d, 1);
-    this.add.rectangle(x - 140 + 1 + Math.max(0, 278 * hp / 100) / 2, 590, Math.max(0, 278 * hp / 100), 10, 0x51d35d, 1);
+    this.add.rectangle(x - 140 + 1 + Math.max(0, 278 * hp / MAX_HP) / 2, 590, Math.max(0, 278 * hp / MAX_HP), 10, 0x51d35d, 1);
   }
 
   private drawGround(): void {

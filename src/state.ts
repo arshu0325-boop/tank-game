@@ -1,6 +1,7 @@
 export type PlayerId = 1 | 2;
 export type TileType = "dirt" | "stone" | "obsidian";
 export type WeaponType = "shell" | "missile" | "boomerang";
+export const MAX_HP = 10;
 
 export interface PlacedBlock {
   col: number;
@@ -36,7 +37,7 @@ function createPlayer(id: PlayerId): PlayerState {
     id,
     name: id === 1 ? "Controller" : "Duelist",
     color: id === 1 ? 0x2496ff : 0xf04444,
-    hp: 100,
+    hp: MAX_HP,
     fuel: 100,
     iron: 0,
     // Small starter supplies keep the first match playable; mining adds to these.

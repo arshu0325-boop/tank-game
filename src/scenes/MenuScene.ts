@@ -29,14 +29,14 @@ export class MenuScene extends Phaser.Scene {
     }, 0x4d942e);
 
     this.add.text(GAME_WIDTH / 2, 555,
-      "Mine blocks for resources, build a defensive dome, then fire from your tank.", {
+      "Drive and drill for resources, drag to build a defense, then duel from your tank.", {
         fontFamily: "Arial", fontSize: "22px", color: "#f5f3e9", align: "center",
         stroke: "#24313b", strokeThickness: 4, wordWrap: { width: 900 },
       }).setOrigin(0.5);
 
     const controls = [
-      "MINE: click blocks on your side of the screen",
-      "BUILD: select a tile (1 / 2 / 3), then click your grid",
+      "MINE: P1 drive A / D and hold F • P2 drive ← / → and hold Enter",
+      "BUILD: select a tile (1 / 2 / 3), then drag across your grid",
       "BATTLE: aim with the mouse, click to fire, ↑ / ↓ changes power",
       "WEAPONS: 1 Shell  •  2 Missile  •  3 Boomerang",
     ];

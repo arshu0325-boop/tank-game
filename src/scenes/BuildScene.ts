@@ -21,7 +21,9 @@ export class BuildScene extends Phaser.Scene {
   private elapsed = 0;
   private timeLeft = BUILD_SECONDS;
   private transitioning = false;
+  private placementPointerId: number | null = null;
   private hudGraphics!: Phaser.GameObjects.Graphics;
+  private timerGraphics!: Phaser.GameObjects.Graphics;
   private timerText!: Phaser.GameObjects.Text;
   private resourceText!: Phaser.GameObjects.Text;
   private selectionText!: Phaser.GameObjects.Text;
@@ -47,6 +49,9 @@ export class BuildScene extends Phaser.Scene {
     this.renderExistingBlocks();
 
     this.input.on("pointerdown", this.handlePointerDown, this);
+    this.input.on("pointermove", this.handlePointerMove, this);
+    this.input.on("pointerup", this.handlePointerUp, this);
+    this.input.on("pointerupoutside", this.handlePointerUp, this);
     if (this.input.keyboard) {
       this.keyboardKeys = this.input.keyboard.addKeys({
         one: Phaser.Input.Keyboard.KeyCodes.ONE,
@@ -64,6 +69,7 @@ export class BuildScene extends Phaser.Scene {
     this.elapsed += delta / 1000;
     this.timeLeft = Math.max(0, BUILD_SECONDS - this.elapsed);
     this.timerText.setText(formatTime(this.timeLeft));
+    this.drawTimerBar();
     if (this.input.keyboard && this.keyboardKeys) {
       if (Phaser.Input.Keyboard.JustDown(this.keyboardKeys.one)) this.selectTile("dirt");
       if (Phaser.Input.Keyboard.JustDown(this.keyboardKeys.two)) this.selectTile("stone");
@@ -132,6 +138,7 @@ export class BuildScene extends Phaser.Scene {
 
   private createHud(): void {
     this.hudGraphics = this.add.graphics().setDepth(20);
+    this.timerGraphics = this.add.graphics().setDepth(22);
     this.add.rectangle(GAME_WIDTH / 2, 43, 420, 62, 0x552b18, 0.94).setStrokeStyle(4, 0xffbe43, 1).setDepth(20);
     this.add.text(GAME_WIDTH / 2, 41, "BUILD PHASE", {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "34px", color: "#fff5e5",
@@ -141,6 +148,9 @@ export class BuildScene extends Phaser.Scene {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "42px", color: "#ffe12f",
       stroke: "#211d0a", strokeThickness: 7,
     }).setOrigin(0.5).setDepth(21);
+    this.drawTimerBar();
+    this.tweens.add({ targets: this.timerGraphics, alpha: 0.72, duration: 520, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
+    this.tweens.add({ targets: this.timerText, scale: 1.045, duration: 720, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
 
     this.add.rectangle(GAME_WIDTH / 2, 817, 1120, 112, 0x171b20, 0.96).setStrokeStyle(3, 0x8c9194, 1).setDepth(20);
     this.makeTileButton(545, 815, "dirt", "1");
@@ -154,7 +164,7 @@ export class BuildScene extends Phaser.Scene {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "18px", color: "#fff8e2",
       stroke: "#121921", strokeThickness: 4, align: "center",
     }).setOrigin(0.5).setDepth(22);
-    this.selectionText = this.add.text(GAME_WIDTH / 2, 883, "Select a block, then click a grid square. Keep the tank area clear.", {
+    this.selectionText = this.add.text(GAME_WIDTH / 2, 883, "Select a tile, then drag across your grid to place several blocks. Keep the tank area clear.", {
       fontFamily: "Arial", fontSize: "16px", color: "#e7e9e8", stroke: "#171b20", strokeThickness: 3,
     }).setOrigin(0.5).setDepth(24);
   }
@@ -171,7 +181,7 @@ export class BuildScene extends Phaser.Scene {
 
   private renderExistingBlocks(): void {
     for (const id of [1, 2] as PlayerId[]) {
-      for (const block of playerById(id).structure) this.addPlacedBlock(id, block.col, block.row, block.type);
+      for (const block of playerById(id).structure) this.addPlacedBlock(id, block.col, block.row, block.type, false);
     }
   }
 
@@ -186,6 +196,20 @@ export class BuildScene extends Phaser.Scene {
       return;
     }
     if (pointer.y < BUILD_ORIGIN_Y || pointer.y >= BUILD_ORIGIN_Y + BUILD_ROWS * TILE_SIZE) return;
+    this.placementPointerId = pointer.id;
+    this.placeAtPointer(pointer);
+  }
+
+  private handlePointerMove(pointer: Phaser.Input.Pointer): void {
+    if (pointer.isDown && this.placementPointerId === pointer.id) this.placeAtPointer(pointer);
+  }
+
+  private handlePointerUp(pointer: Phaser.Input.Pointer): void {
+    if (this.placementPointerId === pointer.id) this.placementPointerId = null;
+  }
+
+  private placeAtPointer(pointer: Phaser.Input.Pointer): void {
+    if (this.transitioning || pointer.y < BUILD_ORIGIN_Y || pointer.y >= BUILD_ORIGIN_Y + BUILD_ROWS * TILE_SIZE) return;
     // Grid bounds determine which player's inventory receives the placement.
     let id: PlayerId | null = null;
     if (pointer.x >= BUILD_ORIGIN_X[2] && pointer.x < BUILD_ORIGIN_X[2] + BUILD_COLS * TILE_SIZE) id = 2;
@@ -209,10 +233,15 @@ export class BuildScene extends Phaser.Scene {
     this.updateHud();
   }
 
-  private addPlacedBlock(id: PlayerId, col: number, row: number, type: TileType): void {
+  private addPlacedBlock(id: PlayerId, col: number, row: number, type: TileType, animate = true): void {
     const x = BUILD_ORIGIN_X[id] + col * TILE_SIZE + TILE_SIZE / 2;
     const y = BUILD_ORIGIN_Y + row * TILE_SIZE + TILE_SIZE / 2;
     const image = addBlockImage(this, x, y, type, { size: TILE_SIZE }).setDepth(8);
+    if (animate) {
+      image.setScale(0.55).setAlpha(0.4);
+      this.tweens.add({ targets: image, scale: 1, alpha: 1, duration: 160, ease: "Back.Out" });
+      this.emitBlockParticles(x, y, type === "dirt" ? 0xc8915f : type === "stone" ? 0xc4d0d5 : 0xb7a4e4, 5);
+    }
     const key = this.placementKey(id, col, row);
     this.placed.set(key, { ownerId: id, col, row, type, image });
   }
@@ -220,13 +249,33 @@ export class BuildScene extends Phaser.Scene {
   private removeBlock(key: string): void {
     const block = this.placed.get(key);
     if (!block) return;
-    block.image.destroy();
+    this.emitBlockParticles(block.image.x, block.image.y, block.type === "dirt" ? 0xc8915f : block.type === "stone" ? 0xc4d0d5 : 0xb7a4e4, 9);
+    this.tweens.add({
+      targets: block.image, scale: 0.25, alpha: 0, duration: 130,
+      onComplete: () => block.image.destroy(),
+    });
     this.placed.delete(key);
     const structure = playerById(block.ownerId).structure;
     const index = structure.findIndex((item) => item.col === block.col && item.row === block.row);
     if (index >= 0) {
       structure.splice(index, 1);
       playerById(block.ownerId).inventory[block.type] += 1;
+    }
+  }
+
+  private emitBlockParticles(x: number, y: number, color: number, count: number): void {
+    for (let i = 0; i < count; i++) {
+      const particle = this.add.rectangle(x, y, Phaser.Math.Between(3, 6), Phaser.Math.Between(3, 6), color, 1).setDepth(10);
+      this.tweens.add({
+        targets: particle,
+        x: x + Phaser.Math.Between(-24, 24),
+        y: y + Phaser.Math.Between(8, 42),
+        angle: Phaser.Math.Between(-150, 150),
+        alpha: 0,
+        duration: Phaser.Math.Between(260, 460),
+        ease: "Cubic.easeIn",
+        onComplete: () => particle.destroy(),
+      });
     }
   }
 
@@ -261,6 +310,20 @@ export class BuildScene extends Phaser.Scene {
       `P1: Dirt ${p1.inventory.dirt} • Stone ${p1.inventory.stone} • Obsidian ${p1.inventory.obsidian} • Iron ${p1.iron}` +
       `       |       P2: Dirt ${p2.inventory.dirt} • Stone ${p2.inventory.stone} • Obsidian ${p2.inventory.obsidian} • Iron ${p2.iron}`,
     );
+  }
+
+  private drawTimerBar(): void {
+    if (!this.timerGraphics) return;
+    const x = GAME_WIDTH / 2 - 160;
+    const y = 137;
+    const width = 320;
+    const ratio = Phaser.Math.Clamp(this.timeLeft / BUILD_SECONDS, 0, 1);
+    const fill = width * ratio;
+    this.timerGraphics.clear();
+    if (fill > 0) this.timerGraphics.fillStyle(0xffd64f, 0.25).fillRoundedRect(x - 4, y - 4, fill + 8, 16, 7);
+    this.timerGraphics.fillStyle(0x15212a, 0.95).fillRoundedRect(x, y, width, 8, 4);
+    this.timerGraphics.fillStyle(0xffd64f, 1).fillRoundedRect(x + 2, y + 2, Math.max(0, fill - 4), 4, 2);
+    this.timerGraphics.lineStyle(1, 0xffef9a, 0.95).strokeRoundedRect(x, y, width, 8, 4);
   }
 
   private isTankCell(col: number, row: number): boolean {

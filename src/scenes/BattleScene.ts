@@ -3,7 +3,7 @@ import {
   BLOCK_HP, BUILD_COLS, BUILD_ORIGIN_X, BUILD_ROWS, GAME_HEIGHT, GAME_WIDTH,
   TILE_SIZE, addBlockImage, baseTerrainY, clamp, distance, drawSky,
 } from "../grid";
-import { gameState, otherPlayerId, playerById, type PlayerId, type TileType, type WeaponType } from "../state";
+import { gameState, MAX_HP, otherPlayerId, playerById, type PlayerId, type TileType, type WeaponType } from "../state";
 
 const TERRAIN_STEP = 8;
 // Tank movement settings. Fuel is charged by actual distance moved.
@@ -58,6 +58,10 @@ export class BattleScene extends Phaser.Scene {
   private statusText!: Phaser.GameObjects.Text;
   private powerText!: Phaser.GameObjects.Text;
   private weaponText!: Phaser.GameObjects.Text;
+  private displayedCharge: Record<PlayerId, { missile: number; boomerang: number }> = {
+    1: { missile: 0, boomerang: 0 },
+    2: { missile: 0, boomerang: 0 },
+  };
 
   // Drag-to-aim + hold-to-charge controls.
   private isAiming = false;
@@ -99,7 +103,11 @@ export class BattleScene extends Phaser.Scene {
 
     gameState.selectedWeapon = "shell";
     gameState.round = 1;
+    for (const id of [1, 2] as PlayerId[]) {
+      this.displayedCharge[id] = { ...playerById(id).charge };
+    }
     drawSky(this);
+    this.drawArenaGrid();
     this.createTerrain();
     this.drawTerrain();
     this.tanks = {
@@ -166,6 +174,7 @@ export class BattleScene extends Phaser.Scene {
     this.timerText.setText(`ROUND ${gameState.round}`);
     this.powerText.setText(`POWER  ${Math.round(this.effectivePower() * 100)}%`);
     this.weaponText.setText(this.weaponStatusText());
+    this.updateHud(delta / 1000);
   }
 
   private updateTankMovement(deltaSeconds: number): void {
@@ -231,18 +240,6 @@ export class BattleScene extends Phaser.Scene {
       g.fillPath();
     };
     drawLayer(0, 0x80502f);
-    drawLayer(80, 0x777a79);
-    drawLayer(185, 0x4c4038);
-    // Pixel-like mineral flecks make the exposed soil resemble a blocky sandbox world.
-    for (let i = 0; i < 150; i++) {
-      const x = (i * 97 + 31) % GAME_WIDTH;
-      const surface = this.terrainAt(x);
-      const y = surface + 24 + ((i * 47) % 165);
-      if (y < GAME_HEIGHT - 5) {
-        g.fillStyle(i % 3 === 0 ? 0x4d3829 : i % 3 === 1 ? 0xa06c43 : 0x5c6061, 0.7);
-        g.fillRect(x, y, 4 + (i % 3) * 2, 3 + (i % 2) * 2);
-      }
-    }
     g.lineStyle(7, 0x4c8030, 1);
     g.beginPath();
     for (let i = 0; i < this.terrain.length; i++) {
@@ -259,6 +256,13 @@ export class BattleScene extends Phaser.Scene {
     g.strokePath();
   }
 
+  private drawArenaGrid(): void {
+    const grid = this.add.graphics().setDepth(1);
+    grid.lineStyle(1, 0xe6f5ff, 0.12);
+    for (let x = 0; x <= GAME_WIDTH; x += 40) grid.lineBetween(x, 0, x, GAME_HEIGHT);
+    for (let y = 0; y <= GAME_HEIGHT; y += 40) grid.lineBetween(0, y, GAME_WIDTH, y);
+  }
+
   private createBattleBlocks(): void {
     for (const id of [1, 2] as PlayerId[]) {
       for (const placed of playerById(id).structure) {
@@ -273,38 +277,43 @@ export class BattleScene extends Phaser.Scene {
 
   private createHud(): void {
     this.hudGraphics = this.add.graphics().setDepth(25);
-    this.add.text(47, 24, "P1: Controller", this.titleStyle()).setDepth(26);
-    this.add.text(1302, 24, "P2: Duelist", this.titleStyle()).setDepth(26);
-    this.p1Text = this.add.text(48, 60, "", this.detailStyle()).setDepth(26);
-    this.p2Text = this.add.text(1303, 60, "", this.detailStyle()).setDepth(26);
-    this.add.rectangle(GAME_WIDTH / 2, 43, 350, 65, 0x462917, 0.95).setStrokeStyle(4, 0xffb940, 1).setDepth(25);
+    this.add.text(42, 28, "P1  /  BLUE TANK", this.titleStyle()).setDepth(26);
+    this.add.text(1290, 28, "P2  /  RED TANK", this.titleStyle()).setDepth(26);
+    this.p1Text = this.add.text(42, 54, "", this.detailStyle()).setDepth(26);
+    this.p2Text = this.add.text(1558, 54, "", this.detailStyle()).setOrigin(1, 0).setDepth(26);
+    this.add.rectangle(GAME_WIDTH / 2, 49, 390, 84, 0x172632, 0.94).setStrokeStyle(3, 0x9bb6c5, 0.9).setDepth(25);
     this.turnText = this.add.text(GAME_WIDTH / 2, 28, "BATTLE PHASE", {
-      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "28px", color: "#fff4e1", stroke: "#21170f", strokeThickness: 6,
+      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "24px", color: "#f5fbff", stroke: "#17232c", strokeThickness: 5,
     }).setOrigin(0.5).setDepth(26);
-    this.timerText = this.add.text(GAME_WIDTH / 2, 66, "ROUND 1", {
-      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "21px", color: "#ffe12f", stroke: "#211d0a", strokeThickness: 4,
+    this.timerText = this.add.text(GAME_WIDTH / 2, 65, "ROUND 1", {
+      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "27px", color: "#ffd45b", stroke: "#20221d", strokeThickness: 5,
     }).setOrigin(0.5).setDepth(26);
 
-    this.add.rectangle(GAME_WIDTH / 2, 849, 1120, 94, 0x151a20, 0.95).setStrokeStyle(3, 0x899096, 1).setDepth(25);
-    this.makeWeaponButton(650, "shell", "1  TANK SHOT", 0x5a4a26);
-    this.makeWeaponButton(810, "missile", "2  MISSILE", 0x593321);
-    this.makeWeaponButton(970, "boomerang", "3  BOOMERANG", 0x204b58);
-    this.statusText = this.add.text(GAME_WIDTH / 2, 783, "", {
-      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "17px", color: "#fff5da", stroke: "#121920", strokeThickness: 4,
+    this.add.rectangle(GAME_WIDTH / 2, 846, 1080, 104, 0x14212b, 0.96).setStrokeStyle(3, 0x8da5b3, 0.9).setDepth(25);
+    this.add.rectangle(GAME_WIDTH / 2, 790, 860, 30, 0x1b2d38, 0.92).setStrokeStyle(1, 0x66818f, 0.75).setDepth(25);
+    this.statusText = this.add.text(GAME_WIDTH / 2, 790, "", {
+      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "15px", color: "#e9f5f8", stroke: "#121920", strokeThickness: 3,
     }).setOrigin(0.5).setDepth(27);
-    this.powerText = this.add.text(1380, 786, "POWER 88%", {
-      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "18px", color: "#ffe56a", stroke: "#1e2020", strokeThickness: 4,
+    this.makeWeaponButton(570, "shell", "1  TANK SHOT", 0x344856);
+    this.makeWeaponButton(730, "missile", "2  MISSILE", 0x4b3b32);
+    this.makeWeaponButton(890, "boomerang", "3  BOOMERANG", 0x24464e);
+    this.add.rectangle(1140, 850, 174, 66, 0xa94432, 1).setStrokeStyle(3, 0xffc18b, 1).setDepth(26);
+    this.add.text(1140, 850, "FIRE  •  SPACE", {
+      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "19px", color: "#fff7eb", stroke: "#502218", strokeThickness: 4,
     }).setOrigin(0.5).setDepth(27);
-    this.weaponText = this.add.text(1380, 815, "TANK SHOT", {
-      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "15px", color: "#f4f4ee", stroke: "#1e2020", strokeThickness: 4,
+    this.powerText = this.add.text(1400, 838, "POWER 88%", {
+      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "19px", color: "#ffe18c", stroke: "#1e2020", strokeThickness: 4,
     }).setOrigin(0.5).setDepth(27);
-    this.add.text(GAME_WIDTH / 2, 894, "Move P1: A/D • Move P2: ←/→ • Drag backward to aim • Hold, then release to fire • ↑/↓ power • 1/2/3 weapon", {
-      fontFamily: "Arial", fontSize: "15px", color: "#d6e0e5", stroke: "#111820", strokeThickness: 3,
+    this.weaponText = this.add.text(1400, 870, "TANK SHOT", {
+      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "14px", color: "#f4f4ee", stroke: "#1e2020", strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(27);
+    this.add.text(GAME_WIDTH / 2, 893, "DRAG TO AIM  •  RELEASE TO FIRE     |     MOVE: P1 A/D   P2 ←/→     |     POWER: ↑ / ↓", {
+      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "13px", color: "#d6e0e5", stroke: "#111820", strokeThickness: 3,
     }).setOrigin(0.5).setDepth(27);
   }
 
   private makeWeaponButton(x: number, type: WeaponType, label: string, color: number): void {
-    this.add.rectangle(x, 849, 150, 60, color, 1).setStrokeStyle(3, 0xb8bec1, 1).setDepth(26);
+    this.add.rectangle(x, 850, 148, 64, color, 1).setStrokeStyle(2, 0xaec2cb, 0.9).setDepth(26);
     this.add.text(x, 849, label, {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: type === "boomerang" ? "13px" : "15px", color: "#ffffff", stroke: "#10151a", strokeThickness: 4,
     }).setOrigin(0.5).setDepth(27);
@@ -315,9 +324,13 @@ export class BattleScene extends Phaser.Scene {
 
     // Weapon buttons remain clickable and do not start an aiming drag.
     if (pointer.y >= 810) {
-      if (pointer.x >= 575 && pointer.x < 730) this.selectWeapon("shell");
-      else if (pointer.x >= 735 && pointer.x < 890) this.selectWeapon("missile");
-      else if (pointer.x >= 895 && pointer.x < 1050) this.selectWeapon("boomerang");
+      if (pointer.x >= 495 && pointer.x < 645) this.selectWeapon("shell");
+      else if (pointer.x >= 655 && pointer.x < 805) this.selectWeapon("missile");
+      else if (pointer.x >= 815 && pointer.x < 965) this.selectWeapon("boomerang");
+      else if (pointer.x >= 1050 && pointer.x < 1230) {
+        this.fireWeapon(undefined, undefined, this.currentAimAngle, this.effectivePower());
+        this.cancelAim();
+      }
       return;
     }
 
@@ -384,35 +397,51 @@ export class BattleScene extends Phaser.Scene {
     return `${WEAPONS[type].label}  •  ${status}  •  ${WEAPONS[type].damage} damage`;
   }
 
-  private updateHud(): void {
+  private updateHud(deltaSeconds = 0): void {
     this.hudGraphics.clear();
     const p1 = playerById(1);
     const p2 = playerById(2);
-    this.drawPlayerBars(20, 18, 305, p1.hp, p1.fuel, 0x2b92e8);
-    this.drawPlayerBars(1275, 18, 305, p2.hp, p2.fuel, 0xe54848);
-    this.p1Text.setText(`HP ${p1.hp}   Fuel ${Math.ceil(p1.fuel)}   M ${p1.charge.missile}%  B ${p1.charge.boomerang}%`);
-    this.p2Text.setText(`HP ${p2.hp}   Fuel ${Math.ceil(p2.fuel)}   M ${p2.charge.missile}%  B ${p2.charge.boomerang}%`);
-    this.turnText.setText(`P${gameState.currentPlayer} TURN`);
+    for (const id of [1, 2] as PlayerId[]) {
+      const charge = this.displayedCharge[id];
+      const actual = playerById(id).charge;
+      const blend = 1 - Math.exp(-7 * deltaSeconds);
+      charge.missile = Phaser.Math.Linear(charge.missile, actual.missile, blend);
+      charge.boomerang = Phaser.Math.Linear(charge.boomerang, actual.boomerang, blend);
+    }
+    this.drawPlayerBars(20, 18, 350, p1.hp, p1.fuel, this.displayedCharge[1].missile, this.displayedCharge[1].boomerang, 0x42b6ff);
+    this.drawPlayerBars(1230, 18, 350, p2.hp, p2.fuel, this.displayedCharge[2].missile, this.displayedCharge[2].boomerang, 0xff6262);
+    this.p1Text.setText(`HP ${p1.hp}  •  FUEL ${Math.ceil(p1.fuel)}  •  HITS ${p1.hits}\nM ${Math.round(this.displayedCharge[1].missile)}%  •  B ${Math.round(this.displayedCharge[1].boomerang)}%`);
+    this.p2Text.setText(`HP ${p2.hp}  •  FUEL ${Math.ceil(p2.fuel)}  •  HITS ${p2.hits}\nM ${Math.round(this.displayedCharge[2].missile)}%  •  B ${Math.round(this.displayedCharge[2].boomerang)}%`);
+    this.turnText.setText(`BATTLE PHASE  •  P${gameState.currentPlayer} TURN`);
     this.statusText.setText(this.fireMessage);
-    const weaponButtons: Array<[number, WeaponType]> = [[650, "shell"], [810, "missile"], [970, "boomerang"]];
+    const weaponButtons: Array<[number, WeaponType]> = [[570, "shell"], [730, "missile"], [890, "boomerang"]];
     for (const [x, type] of weaponButtons) {
       const selected = gameState.selectedWeapon === type;
       this.hudGraphics.lineStyle(selected ? 4 : 1, selected ? 0x51dcff : 0x5d6469, selected ? 1 : 0.65);
-      this.hudGraphics.strokeRoundedRect(x - 76, 817, 152, 64, 5);
+      this.hudGraphics.strokeRoundedRect(x - 76, 817, 152, 66, 5);
     }
   }
 
-  private drawPlayerBars(x: number, y: number, width: number, hp: number, fuel: number, accent: number): void {
-    this.hudGraphics.fillStyle(0x111820, 0.8).fillRoundedRect(x, y, width, 88, 10);
-    this.hudGraphics.lineStyle(3, accent, 1).strokeRoundedRect(x, y, width, 88, 10);
-    this.drawBar(x + 145, y + 41, 142, 12, hp / 100, 0x4ed35a);
-    this.drawBar(x + 145, y + 64, 142, 12, fuel / 100, 0xf6bf43);
+  private drawPlayerBars(x: number, y: number, width: number, hp: number, fuel: number, missile: number, boomerang: number, accent: number): void {
+    this.hudGraphics.fillStyle(0x13222c, 0.94).fillRoundedRect(x, y, width, 158, 8);
+    this.hudGraphics.lineStyle(2, accent, 0.95).strokeRoundedRect(x, y, width, 158, 8);
+    this.drawBar(x + 18, y + 84, width - 36, 8, hp / MAX_HP, 0x62df82);
+    this.drawBar(x + 18, y + 102, width - 36, 7, fuel / 100, 0xffc456);
+    this.drawBar(x + 18, y + 119, width - 36, 7, missile / 100, 0x58d8ff);
+    this.drawBar(x + 18, y + 136, width - 36, 7, boomerang / 100, 0xc282ff);
   }
 
   private drawBar(x: number, y: number, w: number, h: number, ratio: number, color: number): void {
+    const fillWidth = Math.max(0, (w - 4) * clamp(ratio, 0, 1));
+    if (fillWidth > 0) this.hudGraphics.fillStyle(color, 0.24).fillRoundedRect(x - 3, y - 3, fillWidth + 9, h + 6, 4);
     this.hudGraphics.fillStyle(0x05080b, 1).fillRect(x, y, w, h);
     this.hudGraphics.lineStyle(2, 0x020405, 1).strokeRect(x, y, w, h);
-    this.hudGraphics.fillStyle(color, 1).fillRect(x + 2, y + 2, Math.max(0, (w - 4) * ratio), h - 4);
+    this.hudGraphics.fillStyle(color, 1).fillRect(x + 2, y + 2, fillWidth, h - 4);
+  }
+
+  private pulseChargeText(id: PlayerId): void {
+    const label = id === 1 ? this.p1Text : this.p2Text;
+    this.tweens.add({ targets: label, alpha: 0.45, duration: 110, yoyo: true, repeat: 3, onComplete: () => label.setAlpha(1) });
   }
 
   private drawAimGuide(): void {
@@ -455,17 +484,34 @@ export class BattleScene extends Phaser.Scene {
     let y = startY;
     let vx = Math.cos(angle) * speed * (id === 1 ? 1 : -1);
     let vy = Math.sin(angle) * speed;
+    const boomerang = gameState.selectedWeapon === "boomerang";
+    const dir = id === 1 ? 1 : -1;
+    const enemyX = this.tanks[otherPlayerId(id)].x;
+    const targetX = enemyX + dir * 25;
+    const targetY = this.terrainAt(enemyX) - 32;
+    let returning = false;
     this.aimGraphics.lineStyle(2, color, alpha);
 
-    for (let i = 1; i <= 28; i++) {
+    for (let i = 1; i <= (boomerang ? 100 : 28); i++) {
       const t = 0.055;
+      if (boomerang && !returning && (dir === 1 ? x >= enemyX + 70 : x <= enemyX - 70)) returning = true;
+      if (boomerang && returning) {
+        const dx = targetX - x;
+        const dy = targetY - y;
+        const len = Math.max(1, Math.hypot(dx, dy));
+        const desiredVx = dx / len * weapon.speed * power;
+        const desiredVy = dy / len * weapon.speed * power;
+        const blend = 1 - Math.exp(-3 * t);
+        vx += (desiredVx - vx) * blend;
+        vy += (desiredVy - vy) * blend;
+      }
       const nextX = x + vx * t;
       const nextY = y + vy * t;
-      vy += weapon.gravity * t;
+      if (!returning) vy += weapon.gravity * t;
       x = nextX;
       y = nextY;
 
-      if (x < 0 || x > GAME_WIDTH || y > this.terrainAt(clamp(x, 0, GAME_WIDTH)) || y > GAME_HEIGHT - 4) break;
+      if (x < 0 || x > GAME_WIDTH || (!returning && (y > this.terrainAt(clamp(x, 0, GAME_WIDTH)) || y > GAME_HEIGHT - 4))) break;
 
       const hitsBlock = this.blocks.some((block) =>
         Math.abs(x - block.x) <= TILE_SIZE * 0.46 && Math.abs(y - block.y) <= TILE_SIZE * 0.46
@@ -473,6 +519,7 @@ export class BattleScene extends Phaser.Scene {
       if (hitsBlock) break;
 
       if (i % 2 === 0) this.aimGraphics.strokeCircle(x, y, 2.5);
+      if (returning && distance(x, y, enemyX, this.terrainAt(enemyX) - 30) < 29) break;
     }
   }
 
@@ -541,8 +588,11 @@ export class BattleScene extends Phaser.Scene {
       const dx = targetX - projectile.x;
       const dy = targetY - projectile.y;
       const len = Math.max(1, Math.hypot(dx, dy));
-      projectile.vx = (dx / len) * 640;
-      projectile.vy = (dy / len) * 640;
+      const desiredVx = (dx / len) * WEAPONS.boomerang.speed;
+      const desiredVy = (dy / len) * WEAPONS.boomerang.speed;
+      const blend = 1 - Math.exp(-3 * deltaSeconds);
+      projectile.vx += (desiredVx - projectile.vx) * blend;
+      projectile.vy += (desiredVy - projectile.vy) * blend;
       projectile.x += projectile.vx * deltaSeconds;
       projectile.y += projectile.vy * deltaSeconds;
       if (distance(projectile.x, projectile.y, enemyX, enemyGround - 30) < 37) {
@@ -593,6 +643,7 @@ export class BattleScene extends Phaser.Scene {
       const blockDamage = Math.max(1, Math.round(projectile.damage * falloff));
       block.hp -= blockDamage;
       block.image.setAlpha(clamp(0.48 + 0.52 * (block.hp / BLOCK_HP[block.type]), 0.18, 1));
+      this.emitBlockParticles(block.x, block.y, block.type === "dirt" ? 0xc8915f : block.type === "stone" ? 0xc4d0d5 : 0xb7a4e4, block.hp <= 0 ? 13 : 3);
       if (block.ownerId !== projectile.ownerId) enemyWallHit = true;
       if (block.hp <= 0) {
         block.image.destroy();
@@ -622,10 +673,11 @@ export class BattleScene extends Phaser.Scene {
 
     if (enemyWallHit) {
       const attacker = playerById(projectile.ownerId);
-      attacker.charge.missile = Math.min(100, attacker.charge.missile + (wallBroken ? 48 : 30));
+      attacker.charge.missile = Math.min(100, attacker.charge.missile + (wallBroken ? 24 : 15));
       attacker.charge.boomerang = Math.min(100, attacker.charge.boomerang + (wallBroken ? 38 : 22));
+      this.pulseChargeText(projectile.ownerId);
       this.fireMessage = wallBroken
-        ? `Enemy block broken! Missile +${wallBroken ? 48 : 30}% • Boomerang +${wallBroken ? 38 : 22}%`
+        ? `Enemy block broken! Missile +${wallBroken ? 24 : 15}% • Boomerang +${wallBroken ? 38 : 22}%`
         : "Enemy wall hit! Missile and boomerang charge increased.";
     } else {
       this.fireMessage = `${WEAPONS[projectile.weapon].label} impact • ${projectile.damage} damage • crater radius ${projectile.radius}px`;
@@ -696,6 +748,22 @@ export class BattleScene extends Phaser.Scene {
         alpha: 0,
         duration: 300 + i * 8,
         onComplete: () => spark.destroy(),
+      });
+    }
+  }
+
+  private emitBlockParticles(x: number, y: number, color: number, count: number): void {
+    for (let i = 0; i < count; i++) {
+      const particle = this.add.rectangle(x, y, Phaser.Math.Between(3, 6), Phaser.Math.Between(3, 6), color, 1).setDepth(12);
+      this.tweens.add({
+        targets: particle,
+        x: x + Phaser.Math.Between(-30, 30),
+        y: y + Phaser.Math.Between(8, 52),
+        angle: Phaser.Math.Between(-180, 180),
+        alpha: 0,
+        duration: Phaser.Math.Between(260, 500),
+        ease: "Cubic.easeIn",
+        onComplete: () => particle.destroy(),
       });
     }
   }
