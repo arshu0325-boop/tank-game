@@ -6,15 +6,20 @@ export class PreloadScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.createPixelTile("tile-dirt", "#88512d", ["#6e3e24", "#a76a3d", "#9a5c34", "#734326"]);
-    this.createPixelTile("tile-grass", "#86502e", ["#6e3e24", "#a76a3d", "#9a5c34", "#734326"], true);
-    this.createPixelTile("tile-stone", "#727579", ["#54585d", "#8b9094", "#62676b", "#999da0"]);
-    this.createPixelTile("tile-obsidian", "#171725", ["#28243d", "#342b4c", "#11111b", "#4a3c66"]);
+    this.createPixelTile("tile-dirt", "#95572f", ["#713d21", "#bd7540", "#a95e30", "#804625"]);
+    this.createPixelTile("tile-grass", "#95572f", ["#713d21", "#bd7540", "#a95e30", "#804625"], true);
+    this.createPixelTile("tile-stone", "#788489", ["#536166", "#a6b3b7", "#66747a", "#c0c8ca"]);
+    this.createPixelTile("tile-obsidian", "#201a38", ["#382857", "#5a3f88", "#161326", "#7858bd"]);
     this.createOreTile("ore-iron", false);
     this.createOreTile("ore-coal", true);
     this.createTankTexture("tank-blue", "#087de0", "#28c5ff", false);
-    this.createTankTexture("tank-red", "#d92d2d", "#ff6960", true);
+    this.createTankTexture("tank-red", "#d92d2d", "#ff6960", false);
+    this.createTankTexture("tank-gold", "#e99318", "#ffd05a", false);
+    this.createTankTexture("tank-cyan", "#14a9c7", "#73f1ff", false);
+    this.createTankTexture("tank-lime", "#69a91d", "#c8ef45", false);
+    this.createTankTexture("tank-violet", "#7044c7", "#c39aff", false);
     this.createDrillTexture();
+    this.createProjectileTextures();
     this.scene.start("MenuScene");
   }
 
@@ -37,12 +42,12 @@ export class PreloadScene extends Phaser.Scene {
     }
 
     if (grassTop) {
-      ctx.fillStyle = "#477b2e";
+      ctx.fillStyle = "#4d962f";
       ctx.fillRect(0, 0, 40, 8);
-      ctx.fillStyle = "#68a941";
+      ctx.fillStyle = "#8bd64a";
       ctx.fillRect(0, 0, 40, 3);
       for (let i = 0; i < 12; i++) {
-        ctx.fillStyle = i % 2 ? "#3f7028" : "#81ba4b";
+        ctx.fillStyle = i % 2 ? "#397823" : "#a0e35a";
         ctx.fillRect((i * 11) % 38, (i % 3) + 2, 3, 3);
       }
     }
@@ -65,14 +70,14 @@ export class PreloadScene extends Phaser.Scene {
 
     const ctx = texture.getContext();
     ctx.imageSmoothingEnabled = false;
-    ctx.fillStyle = "#73777a";
+    ctx.fillStyle = "#788489";
     ctx.fillRect(0, 0, 40, 40);
-    const stoneColors = ["#555a5e", "#8e9295", "#656a6e", "#a0a3a6"];
+    const stoneColors = ["#536166", "#a6b3b7", "#66747a", "#c0c8ca"];
     for (let i = 0; i < 25; i++) {
       ctx.fillStyle = stoneColors[i % stoneColors.length];
       ctx.fillRect((i * 13) % 37, (i * 19) % 37, i % 3 === 0 ? 5 : 3, i % 3 === 0 ? 4 : 3);
     }
-    const oreColors = coal ? ["#25262a", "#38393e", "#111215"] : ["#d66b26", "#f49a42", "#e6d2ba"];
+    const oreColors = coal ? ["#25262a", "#38393e", "#111215"] : ["#e87320", "#ffb43e", "#f1d7ad"];
     const oreSpots: [number, number, number, number][] = [
       [5, 7, 6, 4], [23, 4, 5, 5], [14, 18, 7, 5],
       [29, 25, 6, 6], [4, 30, 5, 4], [22, 34, 4, 3],
@@ -193,6 +198,51 @@ export class PreloadScene extends Phaser.Scene {
     ctx.fillStyle = "#f6d16a";
     ctx.fillRect(22, 8, 5, 3);
     texture.refresh();
+  }
+
+  private createProjectileTextures(): void {
+    const shell = this.textures.createCanvas("projectile-shell", 32, 16);
+    if (!shell) throw new Error("Failed to create texture: projectile-shell");
+    let ctx = shell.getContext();
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, 32, 16);
+    ctx.fillStyle = "#20252b";
+    ctx.beginPath(); ctx.moveTo(2, 6); ctx.lineTo(23, 6); ctx.lineTo(30, 8); ctx.lineTo(23, 10); ctx.lineTo(2, 10); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#e8b64d";
+    ctx.beginPath(); ctx.moveTo(3, 6); ctx.lineTo(22, 6); ctx.lineTo(28, 8); ctx.lineTo(22, 10); ctx.lineTo(3, 10); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#fff1a8"; ctx.fillRect(7, 6, 11, 2);
+    ctx.fillStyle = "#747d84"; ctx.fillRect(3, 5, 3, 6);
+    shell.refresh();
+
+    const missile = this.textures.createCanvas("projectile-missile", 48, 20);
+    if (!missile) throw new Error("Failed to create texture: projectile-missile");
+    ctx = missile.getContext();
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, 48, 20);
+    ctx.fillStyle = "#192129";
+    ctx.beginPath(); ctx.moveTo(3, 7); ctx.lineTo(32, 7); ctx.lineTo(44, 10); ctx.lineTo(32, 13); ctx.lineTo(3, 13); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#d84a32";
+    ctx.beginPath(); ctx.moveTo(4, 8); ctx.lineTo(32, 8); ctx.lineTo(42, 10); ctx.lineTo(32, 12); ctx.lineTo(4, 12); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#f6d179"; ctx.fillRect(12, 8, 14, 2);
+    ctx.fillStyle = "#f5f0dc"; ctx.fillRect(37, 9, 6, 2);
+    ctx.fillStyle = "#26303a";
+    ctx.beginPath(); ctx.moveTo(8, 8); ctx.lineTo(2, 3); ctx.lineTo(4, 9); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(8, 12); ctx.lineTo(2, 17); ctx.lineTo(4, 11); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#ffb437"; ctx.fillRect(0, 9, 4, 2);
+    ctx.fillStyle = "#fff0a0"; ctx.fillRect(0, 9, 2, 2);
+    missile.refresh();
+
+    const boomerang = this.textures.createCanvas("projectile-boomerang", 36, 36);
+    if (!boomerang) throw new Error("Failed to create texture: projectile-boomerang");
+    ctx = boomerang.getContext();
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, 36, 36);
+    ctx.fillStyle = "#14323c";
+    ctx.beginPath(); ctx.moveTo(5, 4); ctx.lineTo(15, 7); ctx.lineTo(27, 21); ctx.lineTo(33, 30); ctx.lineTo(23, 27); ctx.lineTo(11, 14); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#55e2ee";
+    ctx.beginPath(); ctx.moveTo(7, 5); ctx.lineTo(14, 8); ctx.lineTo(26, 21); ctx.lineTo(30, 27); ctx.lineTo(23, 25); ctx.lineTo(12, 13); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#c3ffff"; ctx.fillRect(11, 8, 5, 2); ctx.fillRect(22, 21, 5, 2);
+    boomerang.refresh();
   }
 }
 

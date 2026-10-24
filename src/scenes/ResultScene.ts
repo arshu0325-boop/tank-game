@@ -69,8 +69,8 @@ export class ResultScene extends Phaser.Scene {
     g.moveTo(0, 650); g.lineTo(170, 625); g.lineTo(350, 662); g.lineTo(550, 625);
     g.lineTo(780, 685); g.lineTo(1000, 640); g.lineTo(1210, 665); g.lineTo(1410, 620); g.lineTo(1600, 653);
     g.strokePath();
-    this.add.image(245, 650, "tank-blue").setOrigin(0.5, 1).setScale(1.2);
-    this.add.image(1355, 645, "tank-red").setOrigin(0.5, 1).setScale(1.2);
+    this.add.image(245, 650, playerById(1).tankTexture).setOrigin(0.5, 1).setScale(1.2);
+    this.add.image(1355, 645, playerById(2).tankTexture).setOrigin(0.5, 1).setFlipX(true).setScale(1.2);
   }
 
   private makeButton(x: number, y: number, w: number, h: number, label: string, callback: () => void, color: number): void {

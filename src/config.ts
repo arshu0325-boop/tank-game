@@ -6,6 +6,7 @@ import { MenuScene } from "./scenes/MenuScene";
 import { MineScene } from "./scenes/MineScene";
 import { PreloadScene } from "./scenes/PreloadScene";
 import { ResultScene } from "./scenes/ResultScene";
+import { TankHangarScene } from "./scenes/TankHangarScene";
 
 export const gameConfig: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -26,5 +27,5 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
     activePointers: 2,
     mouse: { preventDefaultWheel: true },
   },
-  scene: [PreloadScene, MenuScene, MineScene, BuildScene, BattleScene, ResultScene],
+  scene: [PreloadScene, MenuScene, TankHangarScene, MineScene, BuildScene, BattleScene, ResultScene],
 };
