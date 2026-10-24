@@ -108,3 +108,62 @@ export class PreloadScene extends Phaser.Scene {
       ctx.beginPath(); ctx.arc(x, 53, 7, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = "#879097";
       ctx.beginPath(); ctx.arc(x, 53, 4, 0, Math.PI * 2); ctx.fill();
+    }
+      // Tank body.
+    ctx.fillStyle = "#11171d";
+    ctx.beginPath();
+    ctx.moveTo(17, 43);
+    ctx.lineTo(27, 28);
+    ctx.lineTo(91, 28);
+    ctx.lineTo(111, 43);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = baseColor;
+    ctx.beginPath();
+    ctx.moveTo(21, 40);
+    ctx.lineTo(31, 31);
+    ctx.lineTo(88, 31);
+    ctx.lineTo(105, 40);
+    ctx.lineTo(109, 43);
+    ctx.lineTo(20, 43);
+    ctx.closePath();
+    ctx.fill();
+
+    // Highlight on the body.
+    ctx.fillStyle = accent;
+    ctx.fillRect(31, 33, 57, 3);
+
+    ctx.fillStyle = "rgba(255,255,255,0.24)";
+    ctx.fillRect(27, 39, 70, 2);
+
+    // Turret and barrel.
+    ctx.fillStyle = "#11171d";
+    ctx.fillRect(53, 21, 50, 12);
+    ctx.fillRect(88, 24, 29, 6);
+
+    ctx.fillStyle = baseColor;
+    ctx.fillRect(56, 20, 44, 10);
+    ctx.fillRect(91, 25, 27, 4);
+
+    ctx.fillStyle = accent;
+    ctx.fillRect(64, 21, 24, 2);
+
+    // Upper turret.
+    ctx.fillStyle = "#0e2637";
+    ctx.fillRect(68, 12, 21, 10);
+
+    ctx.fillStyle = baseColor;
+    ctx.fillRect(70, 11, 19, 10);
+
+    ctx.fillStyle = accent;
+    ctx.fillRect(72, 12, 12, 3);
+
+    // Bottom outline.
+    ctx.fillStyle = "#15191e";
+    ctx.fillRect(9, 42, 110, 3);
+
+    // Update the canvas texture.
+    texture.refresh();
+  }
+}
