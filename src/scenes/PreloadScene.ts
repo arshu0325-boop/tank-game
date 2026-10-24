@@ -16,16 +16,24 @@ export class PreloadScene extends Phaser.Scene {
     this.createTankTexture("tank-red", "#d92d2d", "#ff6960", true);
     this.scene.start("MenuScene");
   }
+  
 
   private createPixelTile(key: string, base: string, shades: string[], grassTop = false): void {
     const texture = this.textures.createCanvas(key, 40, 40);
-    if (texture === null) {
-  throw new Error(`Failed to create texture: ${key}`);
+
+  
+  
+if (!texture) {
+    console.error(`Failed to create texture: ${key}`);
+    return;
 }
-    const ctx = texture.getContext();
+
+const ctx = texture.getContext();
     ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = base;
     ctx.fillRect(0, 0, 40, 40);
+
+    texture.refresh();
 
     // Deterministic 4–8 px patches give the blocks a Minecraft-inspired pixel texture.
     for (let i = 0; i < 33; i++) {
@@ -66,6 +74,7 @@ export class PreloadScene extends Phaser.Scene {
     ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = "#73777a";
     ctx.fillRect(0, 0, 40, 40);
+    
     const stoneColors = ["#555a5e", "#8e9295", "#656a6e", "#a0a3a6"];
     for (let i = 0; i < 25; i++) {
       ctx.fillStyle = stoneColors[i % stoneColors.length];
@@ -82,9 +91,6 @@ export class PreloadScene extends Phaser.Scene {
     ctx.fillRect(0, 38, 40, 2);
     ctx.fillRect(38, 0, 2, 40);
     texture.refresh();
-    if (!texture) {
-    throw new Error(`Failed to create texture: ${key}`);
-}
   }
 
   private createTankTexture(key: string, baseColor: string, accent: string, mirror: boolean): void {
@@ -92,8 +98,8 @@ export class PreloadScene extends Phaser.Scene {
     if (texture === null) {
   throw new Error(`Failed to create texture: ${key}`);
 }
-    const ctx = texture.getContext();
     
+    const ctx = texture.getContext();
     ctx.imageSmoothingEnabled = false;
     if (mirror) {
       ctx.translate(128, 0);
@@ -148,8 +154,5 @@ export class PreloadScene extends Phaser.Scene {
     ctx.fillStyle = "#15191e";
     ctx.fillRect(9, 42, 110, 3);
     texture.refresh();
-    if (!texture) {
-    throw new Error(`Failed to create texture: ${key}`);
-}
   }
 }
