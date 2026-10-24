@@ -5,6 +5,10 @@ export class PreloadScene extends Phaser.Scene {
     super("PreloadScene");
   }
 
+  preload(): void {
+    this.load.image("tankcraft-logo", "/assets/tankcraft-logo.png");
+  }
+
   create(): void {
     this.createPixelTile("tile-dirt", "#95572f", ["#713d21", "#bd7540", "#a95e30", "#804625"]);
     this.createPixelTile("tile-grass", "#95572f", ["#713d21", "#bd7540", "#a95e30", "#804625"], true);
@@ -13,11 +17,17 @@ export class PreloadScene extends Phaser.Scene {
     this.createOreTile("ore-iron", false);
     this.createOreTile("ore-coal", true);
     this.createTankTexture("tank-blue", "#087de0", "#28c5ff", false, "balanced");
+    this.createTankTexture("tank-blue-preview", "#087de0", "#28c5ff", false, "balanced", true);
     this.createTankTexture("tank-red", "#d92d2d", "#ff6960", false, "heavy");
+    this.createTankTexture("tank-red-preview", "#d92d2d", "#ff6960", false, "heavy", true);
     this.createTankTexture("tank-gold", "#e99318", "#ffd05a", false, "siege");
+    this.createTankTexture("tank-gold-preview", "#e99318", "#ffd05a", false, "siege", true);
     this.createTankTexture("tank-cyan", "#14a9c7", "#73f1ff", false, "twin");
+    this.createTankTexture("tank-cyan-preview", "#14a9c7", "#73f1ff", false, "twin", true);
     this.createTankTexture("tank-lime", "#69a91d", "#c8ef45", false, "rocket");
+    this.createTankTexture("tank-lime-preview", "#69a91d", "#c8ef45", false, "rocket", true);
     this.createTankTexture("tank-violet", "#7044c7", "#c39aff", false, "scout");
+    this.createTankTexture("tank-violet-preview", "#7044c7", "#c39aff", false, "scout", true);
     this.createNightHaloTexture();
     this.createDrillTexture();
     this.createProjectileTextures();
@@ -101,6 +111,7 @@ export class PreloadScene extends Phaser.Scene {
     accent: string,
     mirror: boolean,
     model: "balanced" | "heavy" | "siege" | "twin" | "rocket" | "scout",
+    includeCannon = false,
   ): void {
     const texture = this.textures.createCanvas(key, 128, 70);
     if (!texture) throw new Error(`Failed to create texture: ${key}`);
@@ -177,6 +188,34 @@ export class PreloadScene extends Phaser.Scene {
       ctx.beginPath(); ctx.arc(x, y, 1.5, 0, Math.PI * 2); ctx.fill();
     }
 
+    if (includeCannon) {
+      const drawBarrel = (y: number, thickness: number, length: number): void => {
+        ctx.fillStyle = "#111820";
+        ctx.beginPath(); ctx.roundRect(78, y - thickness / 2, length, thickness, thickness / 2); ctx.fill();
+        const barrel = ctx.createLinearGradient(0, y - thickness / 2, 0, y + thickness / 2);
+        barrel.addColorStop(0, "#eff7ff"); barrel.addColorStop(0.42, "#a8bac9"); barrel.addColorStop(1, "#526575");
+        ctx.fillStyle = barrel;
+        ctx.beginPath(); ctx.roundRect(80, y - thickness / 2 + 1, length - 3, thickness - 2, thickness / 2); ctx.fill();
+        ctx.fillStyle = accent;
+        ctx.fillRect(87, y - 1, Math.max(7, length - 34), 2);
+        ctx.fillStyle = "#283440";
+        ctx.fillRect(78 + length - 10, y - thickness / 2 - 1, 4, thickness + 2);
+        ctx.fillStyle = "#dce9f2";
+        ctx.fillRect(78 + length - 4, y - thickness / 2 + 2, 2, thickness - 4);
+      };
+      if (model === "twin") {
+        drawBarrel(22, 5, 45); drawBarrel(30, 5, 48);
+      } else if (model === "heavy") {
+        drawBarrel(27, 10, 49);
+      } else if (model === "siege") {
+        drawBarrel(24, 8, 54);
+      } else if (model === "balanced") {
+        drawBarrel(27, 7, 46);
+      } else if (model === "scout") {
+        drawBarrel(28, 4, 50);
+      }
+    }
+
     const turretBox = model === "heavy" ? { x: 40, y: 15, w: 55, h: 20 }
       : model === "siege" ? { x: 34, y: 13, w: 56, h: 23 }
       : model === "rocket" ? { x: 46, y: 12, w: 53, h: 25 }
@@ -206,6 +245,19 @@ export class PreloadScene extends Phaser.Scene {
         ctx.fillStyle = accent;
         ctx.beginPath(); ctx.arc(cx - 0.6, cy - 0.6, 1.5, 0, Math.PI * 2); ctx.fill();
       }
+      // A forward cannon sits above the rocket pod so Wrecker reads clearly as a tank.
+      ctx.fillStyle = "#111820";
+      ctx.beginPath(); ctx.roundRect(76, 24, 49, 8, 4); ctx.fill();
+      const barrel = ctx.createLinearGradient(0, 24, 0, 32);
+      barrel.addColorStop(0, "#eff7ff"); barrel.addColorStop(0.42, "#a8bac9"); barrel.addColorStop(1, "#526575");
+      ctx.fillStyle = barrel;
+      ctx.beginPath(); ctx.roundRect(78, 25, 45, 6, 3); ctx.fill();
+      ctx.fillStyle = accent;
+      ctx.fillRect(84, 27, 24, 2);
+      ctx.fillStyle = "#283440";
+      ctx.fillRect(115, 23, 4, 10);
+      ctx.fillStyle = "#dce9f2";
+      ctx.fillRect(121, 26, 2, 4);
     } else if (model === "scout") {
       ctx.fillStyle = "#111820";
       ctx.fillRect(66, 13, 2, 10);

@@ -56,65 +56,9 @@ export class MenuScene extends Phaser.Scene {
   }
 
   private drawTitlePanel(): void {
-    const x = GAME_WIDTH / 2;
-    const y = 145;
-    const panelWidth = 900;
-    const panelHeight = 116;
-
-    const panel = this.add.graphics().setDepth(3);
-
-    // Layered outlines give the title panel a block-built appearance.
-    panel.fillStyle(0x101c2a, 0.96);
-    panel.fillRoundedRect(
-      x - panelWidth / 2,
-      y - panelHeight / 2,
-      panelWidth,
-      panelHeight,
-      18
-    );
-
-    panel.lineStyle(6, 0xf8bd4b, 1);
-    panel.strokeRoundedRect(
-      x - panelWidth / 2,
-      y - panelHeight / 2,
-      panelWidth,
-      panelHeight,
-      18
-    );
-
-    panel.lineStyle(2, 0x28c5ff, 1);
-    panel.strokeRoundedRect(
-      x - panelWidth / 2 + 8,
-      y - panelHeight / 2 + 8,
-      panelWidth - 16,
-      panelHeight - 16,
-      12
-    );
-
-    // Use the optional custom font with safe fallbacks.
-    this.add.text(x, y - 20, "TANKCRAFT", {
-      fontFamily: "MinecraftLogo, Arial Black, Arial, sans-serif",
-      fontSize: "66px",
-      color: "#fff4d7",
-      stroke: "#080e16",
-      strokeThickness: 8,
-      shadow: {
-        color: "#000000",
-        blur: 7,
-        offsetX: 4,
-        offsetY: 5,
-        fill: true,
-      },
-    }).setOrigin(0.5).setDepth(4);
-
-    this.add.text(x, y + 38, "◆   MINE     •     BUILD     •     DUEL   ◆", {
-      fontFamily: "Arial Black, Arial, sans-serif",
-      fontSize: "16px",
-      color: "#ffbf43",
-      stroke: "#241b13",
-      strokeThickness: 2,
-      letterSpacing: 2,
-    }).setOrigin(0.5).setDepth(4);
+    this.add.image(GAME_WIDTH / 2, 125, "tankcraft-logo")
+      .setDisplaySize(660, 220)
+      .setDepth(4);
   }
 
   private drawStartButton(): void {
@@ -294,7 +238,7 @@ export class MenuScene extends Phaser.Scene {
     } = options;
 
     const width = 410;
-    const height = 274;
+    const height = 300;
     const left = -width / 2;
     const top = -height / 2;
 
@@ -342,7 +286,7 @@ export class MenuScene extends Phaser.Scene {
     }));
 
     // Four evenly spaced instruction sections.
-    let currentY = top + 65;
+    let currentY = top + 63;
 
     controls.forEach((section) => {
       card.add(this.add.text(left + 17, currentY, section.heading, {
@@ -352,21 +296,21 @@ export class MenuScene extends Phaser.Scene {
         stroke: "#0a121b",
         strokeThickness: 2,
       }));
-      currentY += 19;
+      currentY += 17;
 
       section.lines.forEach((line) => {
         card.add(this.add.text(left + 18, currentY, line, {
           fontFamily: "Arial, sans-serif",
-          fontSize: "13px",
+          fontSize: "12px",
           color: "#f2f6fb",
           stroke: "#101923",
           strokeThickness: 1,
           wordWrap: { width: width - 38 },
         }));
-        currentY += 17;
+        currentY += 16;
       });
 
-      currentY += 5;
+      currentY += 3;
     });
 
     // Friendly hover animation.
@@ -427,12 +371,12 @@ export class MenuScene extends Phaser.Scene {
     g.lineTo(1600, 650);
     g.strokePath();
 
-    this.add.image(190, 654, playerById(1).tankTexture)
+    this.add.image(190, 654, `${playerById(1).tankTexture}-preview`)
       .setOrigin(0.5, 1)
       .setScale(1.1)
       .setDepth(2);
 
-    this.add.image(1410, 645, playerById(2).tankTexture)
+    this.add.image(1410, 645, `${playerById(2).tankTexture}-preview`)
       .setOrigin(0.5, 1)
       .setScale(1.1)
       .setDepth(2);
