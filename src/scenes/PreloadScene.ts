@@ -123,7 +123,7 @@ export class PreloadScene extends Phaser.Scene {
       return `rgb(${channels[0]},${channels[1]},${channels[2]})`;
     };
     const vibrantColor = `#${baseColor.slice(1).match(/../g)!.map((part) =>
-      Math.min(255, Math.round(Number.parseInt(part, 16) * 1.2)).toString(16).padStart(2, "0"),
+      Math.min(255, Math.round(Number.parseInt(part, 16) * 1.35)).toString(16).padStart(2, "0"),
     ).join("")}`;
     const dark = adjust(vibrantColor, -0.48);
     const light = adjust(vibrantColor, 0.38);

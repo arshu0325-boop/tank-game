@@ -32,7 +32,7 @@ export class MenuScene extends Phaser.Scene {
       controls: [
         { heading: "⛏ MINE", lines: ["A / D move  •  W climb", "Hold F  Drill for resources"] },
         { heading: "▦ BUILD", lines: ["1 / 2 / 3  Select block", "Drag across your grid to build"] },
-        { heading: "⚔ BATTLE", lines: ["Pull back from your tank", "Release to fire  •  ↑ / ↓  Power"] },
+        { heading: "⚔ BATTLE", lines: ["Aim with the cursor", "Release to fire  •  ↑ / ↓  Power"] },
         { heading: "◆ WEAPONS", lines: ["1  Shell     2  Missile", "3  Boomerang"] },
       ],
     });
@@ -47,7 +47,7 @@ export class MenuScene extends Phaser.Scene {
       controls: [
         { heading: "⛏ MINE", lines: ["← / → move  •  ↑ climb", "Hold ENTER  Drill for resources"] },
         { heading: "▦ BUILD", lines: ["7 / 8 / 9  Select block", "Drag across your grid to build"] },
-        { heading: "⚔ BATTLE", lines: ["Pull back from your tank", "Release to fire  •  ↑ / ↓  Power"] },
+        { heading: "⚔ BATTLE", lines: ["Aim with the cursor", "Release to fire  •  ↑ / ↓  Power"] },
         { heading: "◆ WEAPONS", lines: ["4  Shell     5  Missile", "6  Boomerang"] },
       ],
     });
