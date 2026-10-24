@@ -1,18 +1,19 @@
 {
-  "name": "build-blast",
+  "name": "tankcraft-pvp",
+  "version": "1.0.0",
   "private": true,
-  "version": "0.0.0",
-  "type": "module",
+  "description": "A local 2-player Minecraft-inspired tank duel made with Phaser 3 and TypeScript.",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "tsc --noEmit && vite build",
     "preview": "vite preview"
   },
-  "devDependencies": {
-    "typescript": "~6.0.3",
-    "vite": "^8.3.4"
-  },
   "dependencies": {
-    "phaser": "^4.2.1"
+    "phaser": "^3.90.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5"
   }
 }
+
