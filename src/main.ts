@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import './style.css'
 import heroImg from './assets/hero.png'
 import typescriptLogo from './assets/typescript.svg'
@@ -58,3 +59,16 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 `
 
 setupCounter(document.querySelector<HTMLButtonElement>('#counter')!)
+=======
+ import Phaser from 'phaser';
+import { MineScene } from './MineScene';
+import { BuildScene } from './BuildScene';
+
+new Phaser.Game({
+  type: Phaser.AUTO,
+  width: 1280,
+  height: 704,
+  parent: 'app',
+  scene: [MineScene, BuildScene],
+});
+>>>>>>> 4503aa90ae682aa71f08f5af7736624d0c565061
