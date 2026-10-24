@@ -24,6 +24,8 @@ const DRILL_CENTER_Y = -15;
 const DRILL_TIP_X = DRILL_MOUNT_X + DRILL_WIDTH;
 const DRILL_TIP_Y = DRILL_CENTER_Y;
 const MINE_CAMERA_ZOOM = 1.45;
+const TANK_HULL_HALF_WIDTH = 48;
+const TANK_HULL_HEIGHT = 54;
 
 export class MineScene extends Phaser.Scene {
   private cells = new Map<string, MineCell>();
@@ -49,9 +51,11 @@ export class MineScene extends Phaser.Scene {
     p1Left: Phaser.Input.Keyboard.Key;
     p1Right: Phaser.Input.Keyboard.Key;
     p1Up: Phaser.Input.Keyboard.Key;
+    p1Down: Phaser.Input.Keyboard.Key;
     p2Left: Phaser.Input.Keyboard.Key;
     p2Right: Phaser.Input.Keyboard.Key;
     p2Up: Phaser.Input.Keyboard.Key;
+    p2Down: Phaser.Input.Keyboard.Key;
     p1Mine: Phaser.Input.Keyboard.Key;
     p2Mine: Phaser.Input.Keyboard.Key;
   };
@@ -91,16 +95,18 @@ export class MineScene extends Phaser.Scene {
         p1Left: Phaser.Input.Keyboard.KeyCodes.A,
         p1Right: Phaser.Input.Keyboard.KeyCodes.D,
         p1Up: Phaser.Input.Keyboard.KeyCodes.W,
+        p1Down: Phaser.Input.Keyboard.KeyCodes.S,
         p2Left: Phaser.Input.Keyboard.KeyCodes.LEFT,
         p2Right: Phaser.Input.Keyboard.KeyCodes.RIGHT,
         p2Up: Phaser.Input.Keyboard.KeyCodes.UP,
+        p2Down: Phaser.Input.Keyboard.KeyCodes.DOWN,
         p1Mine: Phaser.Input.Keyboard.KeyCodes.F,
         p2Mine: Phaser.Input.Keyboard.KeyCodes.ENTER,
       }) as typeof this.keys;
     }
     this.hintText = this.add.text(GAME_WIDTH / 2, 210,
-      "DRIVE: P1 A / D  •  P2 ← / →     CLIMB: P1 W  •  P2 ↑     DRILL: P1 F  •  P2 ENTER", {
-        fontFamily: "Arial Black, Arial, sans-serif", fontSize: "19px", color: "#fff4cf",
+      "DRIVE: P1 A / D  •  P2 ← / →     CLIMB: P1 W  •  P2 ↑     SIDE DRILL: P1 F  •  P2 ENTER     DOWN DRILL: P1 S  •  P2 ↓", {
+        fontFamily: "Arial Black, Arial, sans-serif", fontSize: "16px", color: "#fff4cf",
         stroke: "#27313b", strokeThickness: 5, align: "center",
       }).setOrigin(0.5).setDepth(20);
     this.updateHud();
@@ -144,9 +150,11 @@ export class MineScene extends Phaser.Scene {
     if (this.input.keyboard && this.keys) {
       for (const id of [1, 2] as PlayerId[]) {
         this.mineCooldown[id] = Math.max(0, this.mineCooldown[id] - delta / 1000);
-        const drilling = id === 1 ? this.keys.p1Mine.isDown : this.keys.p2Mine.isDown;
-        if (drilling && this.mineCooldown[id] <= 0) {
-          this.mineAtFront(id);
+        const drillingDown = id === 1 ? this.keys.p1Down.isDown : this.keys.p2Down.isDown;
+        const drillingSide = id === 1 ? this.keys.p1Mine.isDown : this.keys.p2Mine.isDown;
+        if ((drillingDown || drillingSide) && this.mineCooldown[id] <= 0) {
+          if (drillingDown) this.mineAtBelow(id);
+          else this.mineAtFront(id);
           this.mineCooldown[id] = 0.28;
         }
       }
@@ -205,9 +213,11 @@ export class MineScene extends Phaser.Scene {
     const p2X = 1440;
     const p1Ground = this.tankSupportY(p1X, 1);
     const p2Ground = this.tankSupportY(p2X, 2);
+    const p1FacesLeftByDefault = playerById(1).tankTexture === "tank-red";
+    const p2FacesLeftByDefault = playerById(2).tankTexture === "tank-red";
     this.tanks = {
-      1: this.add.image(p1X, p1Ground, `${playerById(1).tankTexture}-preview`).setOrigin(0.5, 1).setScale(0.95).setDepth(8),
-      2: this.add.image(p2X, p2Ground, `${playerById(2).tankTexture}-preview`).setOrigin(0.5, 1).setScale(0.95).setDepth(8),
+      1: this.add.image(p1X, p1Ground, `${playerById(1).tankTexture}-preview`).setOrigin(0.5, 1).setScale(0.95).setFlipX(p1FacesLeftByDefault).setDepth(8),
+      2: this.add.image(p2X, p2Ground, `${playerById(2).tankTexture}-preview`).setOrigin(0.5, 1).setScale(0.95).setFlipX(!p2FacesLeftByDefault).setDepth(8),
     };
     this.drills = {
       1: this.add.image(p1X + DRILL_MOUNT_X, p1Ground + DRILL_CENTER_Y, "tank-drill").setOrigin(0, 0.5).setDisplaySize(DRILL_WIDTH, 32).setDepth(9),
@@ -277,40 +287,75 @@ export class MineScene extends Phaser.Scene {
       const safeDelta = Math.min(deltaSeconds, 0.05);
       if (direction !== 0) {
         this.facing[id] = direction as -1 | 1;
-        tank.setFlipX(direction < 0);
+        const textureFacesLeft = player.tankTexture === "tank-red";
+        tank.setFlipX((direction < 0) !== textureFacesLeft);
         if (player.fuel > 0) {
-          const minX = id === 1 ? 42 : GAME_WIDTH / 2 + 42;
-          const maxX = id === 1 ? GAME_WIDTH / 2 - 42 : GAME_WIDTH - 42;
+          const edge = tank.displayWidth / 2 + 4;
+          const minX = id === 1 ? edge : GAME_WIDTH / 2 + edge;
+          const maxX = id === 1 ? GAME_WIDTH / 2 - edge : GAME_WIDTH - edge;
           const desiredMove = direction * MINE_MOVE_SPEED * safeDelta;
           const fuelMove = player.fuel / MINE_FUEL_PER_PIXEL;
           const move = Math.sign(desiredMove) * Math.min(Math.abs(desiredMove), fuelMove);
           const nextX = Phaser.Math.Clamp(tank.x + move, minX, maxX);
-          const currentSupportY = this.tankSupportY(tank.x, id);
-          const nextSupportY = this.tankSupportY(nextX, id);
+          const currentSupportY = this.tankSupportY(tank.x, id, tank.y);
+          const nextSupportY = this.tankSupportY(nextX, id, tank.y);
           const steppingUp = nextSupportY < currentSupportY - 3;
           if (!steppingUp || climb) {
-            const distanceMoved = Math.abs(nextX - tank.x);
-            tank.x = nextX;
-            player.fuel = Math.max(0, player.fuel - distanceMoved * MINE_FUEL_PER_PIXEL);
+            const nextY = steppingUp ? nextSupportY : tank.y;
+            if (!this.tankOverlapsMineBlock(nextX, nextY, id)) {
+              const distanceMoved = Math.abs(nextX - tank.x);
+              tank.x = nextX;
+              tank.y = nextY;
+              player.fuel = Math.max(0, player.fuel - distanceMoved * MINE_FUEL_PER_PIXEL);
+            }
           }
         }
       }
 
-      const supportY = this.tankSupportY(tank.x, id);
+      const supportY = this.tankSupportY(tank.x, id, tank.y);
       if (tank.y < supportY) {
         this.fallVelocity[id] += 1500 * safeDelta;
-        tank.y = Math.min(supportY, tank.y + this.fallVelocity[id] * safeDelta);
-        if (tank.y >= supportY) this.fallVelocity[id] = 0;
+        const nextY = Math.min(supportY, tank.y + this.fallVelocity[id] * safeDelta);
+        if (this.tankOverlapsMineBlock(tank.x, nextY, id)) {
+          this.fallVelocity[id] = 0;
+        } else {
+          tank.y = nextY;
+          if (tank.y >= supportY) this.fallVelocity[id] = 0;
+        }
       } else if (tank.y > supportY) {
         this.fallVelocity[id] = 0;
-        if (climb) tank.y = Math.max(supportY, tank.y - 115 * safeDelta);
+        if (climb) {
+          const nextY = Math.max(supportY, tank.y - 115 * safeDelta);
+          if (!this.tankOverlapsMineBlock(tank.x, nextY, id)) tank.y = nextY;
+        }
       } else {
         this.fallVelocity[id] = 0;
       }
     }
   }
 
-  private tankSupportY(x: number, id: PlayerId): number {
+  private tankOverlapsMineBlock(x: number, y: number, id: PlayerId): boolean {
+    // Use the tank hull rather than its transparent sprite margins. Leave a
+    // small track gap so a block used as the ground is not treated as a wall.
+    const left = x - TANK_HULL_HALF_WIDTH;
+    const right = x + TANK_HULL_HALF_WIDTH;
+    const top = y - TANK_HULL_HEIGHT;
+    const bottom = y - 8;
+    const firstColumn = id === 1 ? 0 : MINE_COLS / 2;
+    const lastColumn = id === 1 ? MINE_COLS / 2 - 1 : MINE_COLS - 1;
+    const minCol = Phaser.Math.Clamp(Math.floor(left / TILE_SIZE), firstColumn, lastColumn);
+    const maxCol = Phaser.Math.Clamp(Math.floor((right - 0.01) / TILE_SIZE), firstColumn, lastColumn);
+    const minRow = Phaser.Math.Clamp(Math.floor((top - MINE_ORIGIN_Y) / TILE_SIZE), 0, MINE_ROWS - 1);
+    const maxRow = Phaser.Math.Clamp(Math.floor((bottom - 0.01 - MINE_ORIGIN_Y) / TILE_SIZE), 0, MINE_ROWS - 1);
+    for (let col = minCol; col <= maxCol; col++) {
+      for (let row = minRow; row <= maxRow; row++) {
+        if (this.cells.has(this.cellKey(col, row))) return true;
+      }
+    }
+    return false;
+  }
+
+  private tankSupportY(x: number, id: PlayerId, currentY?: number): number {
     const firstColumn = id === 1 ? 0 : MINE_COLS / 2;
     const lastColumn = id === 1 ? MINE_COLS / 2 - 1 : MINE_COLS - 1;
     const leftColumn = Math.max(firstColumn, Math.floor((x - 52) / TILE_SIZE));
@@ -319,6 +364,10 @@ export class MineScene extends Phaser.Scene {
     for (let col = leftColumn; col <= rightColumn; col++) {
       for (let row = 0; row < MINE_ROWS; row++) {
         if (this.cells.has(this.cellKey(col, row))) {
+          const blockSupportY = MINE_ORIGIN_Y + row * TILE_SIZE + 7;
+          // Ignore blocks overhead while the tank is already in an excavated
+          // tunnel. They are a ceiling, not the surface supporting the tracks.
+          if (currentY !== undefined && blockSupportY < currentY - 8) continue;
           highestSupportRow = Math.min(highestSupportRow, row);
           break;
         }
@@ -344,13 +393,21 @@ export class MineScene extends Phaser.Scene {
     for (const id of [1, 2] as PlayerId[]) {
       const tank = this.tanks[id];
       const dir = this.facing[id];
-      const drilling = id === 1 ? this.keys?.p1Mine.isDown : this.keys?.p2Mine.isDown;
+      const drillingDown = id === 1 ? this.keys?.p1Down.isDown : this.keys?.p2Down.isDown;
+      const drillingSide = id === 1 ? this.keys?.p1Mine.isDown : this.keys?.p2Mine.isDown;
       const drill = this.drills[id];
-      drill.setOrigin(dir === 1 ? 0 : 1, 0.5);
-      drill.setFlipX(dir === -1);
-      const vibration = drilling ? Math.sin(this.elapsed * 42) * 2 : 0;
-      drill.setPosition(tank.x + dir * (DRILL_MOUNT_X + vibration), tank.y + DRILL_CENTER_Y);
-      drill.setAngle(0);
+      const vibration = drillingDown || drillingSide ? Math.sin(this.elapsed * 42) * 2 : 0;
+      if (drillingDown) {
+        drill.setOrigin(0.5, 0.5);
+        drill.setFlipX(false);
+        drill.setPosition(tank.x, tank.y + 14 + vibration);
+        drill.setAngle(90);
+      } else {
+        drill.setOrigin(dir === 1 ? 0 : 1, 0.5);
+        drill.setFlipX(dir === -1);
+        drill.setPosition(tank.x + dir * (DRILL_MOUNT_X + vibration), tank.y + DRILL_CENTER_Y);
+        drill.setAngle(0);
+      }
     }
   }
 
@@ -386,6 +443,37 @@ export class MineScene extends Phaser.Scene {
     }
     const target = contacts.sort((a, b) => a.distance - b.distance)[0]?.cell;
     if (!target) return;
+
+    this.damageMineCell(id, target);
+  }
+
+  private mineAtBelow(id: PlayerId): void {
+    if (this.transitioning) return;
+    const tank = this.tanks[id];
+    const firstColumn = id === 1 ? 0 : MINE_COLS / 2;
+    const lastColumn = id === 1 ? MINE_COLS / 2 - 1 : MINE_COLS - 1;
+    const leftColumn = Phaser.Math.Clamp(Math.floor((tank.x - TANK_HULL_HALF_WIDTH) / TILE_SIZE), firstColumn, lastColumn);
+    const rightColumn = Phaser.Math.Clamp(Math.floor((tank.x + TANK_HULL_HALF_WIDTH) / TILE_SIZE), firstColumn, lastColumn);
+    const firstRow = Phaser.Math.Clamp(Math.floor((tank.y - MINE_ORIGIN_Y - 7) / TILE_SIZE), 0, MINE_ROWS - 1);
+    let target: MineCell | undefined;
+    // Clear the blocks under the tracks from nearest to farthest. This makes
+    // a hole wide enough for the tank to drop through instead of tunneling a
+    // narrow shaft while the neighboring blocks keep it perched above.
+    for (let row = firstRow; row < MINE_ROWS && !target; row++) {
+      const candidates: MineCell[] = [];
+      for (let col = leftColumn; col <= rightColumn; col++) {
+        const cell = this.cells.get(this.cellKey(col, row));
+        if (cell) candidates.push(cell);
+      }
+      target = candidates.sort((a, b) =>
+        Math.abs(a.col * TILE_SIZE + TILE_SIZE / 2 - tank.x) - Math.abs(b.col * TILE_SIZE + TILE_SIZE / 2 - tank.x),
+      )[0];
+    }
+    if (!target) return;
+    this.damageMineCell(id, target);
+  }
+
+  private damageMineCell(id: PlayerId, target: MineCell): void {
 
     const x = target.col * TILE_SIZE + TILE_SIZE / 2;
     const y = MINE_ORIGIN_Y + target.row * TILE_SIZE + TILE_SIZE / 2;

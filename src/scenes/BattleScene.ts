@@ -131,9 +131,11 @@ export class BattleScene extends Phaser.Scene {
     this.drawArenaGrid();
     this.createTerrain();
     this.drawTerrain();
+    const p1FacesLeftByDefault = playerById(1).tankTexture === "tank-red";
+    const p2FacesLeftByDefault = playerById(2).tankTexture === "tank-red";
     this.tanks = {
-      1: this.add.image(BATTLE_P1_X, this.terrainAt(BATTLE_P1_X), playerById(1).tankTexture).setOrigin(0.5, 1).setDepth(7),
-      2: this.add.image(BATTLE_P2_X, this.terrainAt(BATTLE_P2_X), playerById(2).tankTexture).setOrigin(0.5, 1).setDepth(7),
+      1: this.add.image(BATTLE_P1_X, this.terrainAt(BATTLE_P1_X), playerById(1).tankTexture).setOrigin(0.5, 1).setFlipX(p1FacesLeftByDefault).setDepth(7),
+      2: this.add.image(BATTLE_P2_X, this.terrainAt(BATTLE_P2_X), playerById(2).tankTexture).setOrigin(0.5, 1).setFlipX(!p2FacesLeftByDefault).setDepth(7),
     };
     this.cannonGraphics = this.add.graphics().setDepth(8);
     this.createBattleBlocks();
@@ -275,6 +277,8 @@ export class BattleScene extends Phaser.Scene {
       nextX = tank.x + distanceMoved;
     }
     if (Math.abs(distanceMoved) < 0.001) return;
+    const nextY = this.terrainAt(nextX);
+    if (this.tankOverlapsBlock(nextX, nextY, tank)) return;
 
     const fuelShownBefore = Math.ceil(player.fuel);
     tank.x = nextX;
@@ -285,6 +289,21 @@ export class BattleScene extends Phaser.Scene {
       this.fireMessage = `P${id} moving — ${Math.ceil(player.fuel)} fuel remaining.`;
       this.updateHud();
     }
+  }
+
+  private tankOverlapsBlock(x: number, groundY: number, tank: Phaser.GameObjects.Image): boolean {
+    const halfWidth = tank.displayWidth * 0.42;
+    const bodyTop = groundY - tank.displayHeight * 0.78;
+    const bodyBottom = groundY - 8;
+    for (const block of this.blocks) {
+      const blockLeft = block.x - TILE_SIZE / 2;
+      const blockRight = block.x + TILE_SIZE / 2;
+      const blockTop = block.y - TILE_SIZE / 2;
+      const blockBottom = block.y + TILE_SIZE / 2;
+      if (x + halfWidth > blockLeft && x - halfWidth < blockRight &&
+          bodyBottom > blockTop && bodyTop < blockBottom) return true;
+    }
+    return false;
   }
 
   private createTerrain(): void {
