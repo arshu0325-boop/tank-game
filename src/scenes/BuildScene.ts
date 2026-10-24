@@ -1,7 +1,7 @@
 import Phaser from "phaser";
 import {
   addBlockImage, BUILD_COLS, BUILD_ORIGIN_X, BUILD_ORIGIN_Y, BUILD_ROWS,
-  GAME_HEIGHT, GAME_WIDTH, TILE_SIZE, drawSky, formatTime,
+  GAME_HEIGHT, GAME_WIDTH, TILE_SIZE, formatTime,
 } from "../grid";
 import { gameState, playerById, type PlayerId, type TileType } from "../state";
 
@@ -40,7 +40,9 @@ export class BuildScene extends Phaser.Scene {
   }
 
   create(): void {
-    drawSky(this);
+    const background = gameState.nightMode ? "battle-night-background" : "battle-day-background";
+    this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, background)
+      .setDisplaySize(GAME_WIDTH, GAME_HEIGHT).setDepth(-10);
     this.drawGround();
     this.drawBuildGrids();
     const p1FacesLeftByDefault = playerById(1).tankTexture === "tank-red";
@@ -49,9 +51,6 @@ export class BuildScene extends Phaser.Scene {
       .setFlipX(p1FacesLeftByDefault).setDepth(6);
     this.add.image(1320, 590, `${playerById(2).tankTexture}-preview`).setOrigin(0.5, 1)
       .setFlipX(!p2FacesLeftByDefault).setDepth(6);
-    if (gameState.nightMode) {
-      this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x0a1550, 0.42).setDepth(5.5);
-    }
     this.createHud();
     this.renderExistingBlocks();
 
@@ -89,35 +88,62 @@ export class BuildScene extends Phaser.Scene {
 
   private drawGround(): void {
     const g = this.add.graphics().setDepth(1);
-    g.fillStyle(0x92572f, 1);
-    g.fillPoints([
-      new Phaser.Geom.Point(0, 590), new Phaser.Geom.Point(140, 567),
-      new Phaser.Geom.Point(320, 590), new Phaser.Geom.Point(470, 575),
-      new Phaser.Geom.Point(640, 625), new Phaser.Geom.Point(800, 670),
-      new Phaser.Geom.Point(960, 630), new Phaser.Geom.Point(1120, 580),
-      new Phaser.Geom.Point(1300, 590), new Phaser.Geom.Point(1450, 565),
-      new Phaser.Geom.Point(1600, 590), new Phaser.Geom.Point(1600, 900),
-      new Phaser.Geom.Point(0, 900),
-    ], true);
-    g.fillStyle(0x4f8d32, 1);
-    g.fillPoints([
-      new Phaser.Geom.Point(0, 590), new Phaser.Geom.Point(140, 567),
-      new Phaser.Geom.Point(320, 590), new Phaser.Geom.Point(470, 575),
-      new Phaser.Geom.Point(640, 625), new Phaser.Geom.Point(800, 670),
-      new Phaser.Geom.Point(960, 630), new Phaser.Geom.Point(1120, 580),
-      new Phaser.Geom.Point(1300, 590), new Phaser.Geom.Point(1450, 565),
-      new Phaser.Geom.Point(1600, 590), new Phaser.Geom.Point(1600, 606),
-      new Phaser.Geom.Point(1450, 581), new Phaser.Geom.Point(1300, 606),
-      new Phaser.Geom.Point(1120, 596), new Phaser.Geom.Point(960, 646),
-      new Phaser.Geom.Point(800, 686), new Phaser.Geom.Point(640, 641),
-      new Phaser.Geom.Point(470, 591), new Phaser.Geom.Point(320, 606),
-      new Phaser.Geom.Point(140, 583), new Phaser.Geom.Point(0, 606),
-    ], true);
-    g.lineStyle(3, 0xb5e65a, 0.95);
+    const night = gameState.nightMode;
+    const surface: Array<[number, number]> = [
+      [0, 590], [140, 567], [320, 590], [470, 575], [640, 625], [800, 670],
+      [960, 630], [1120, 580], [1300, 590], [1450, 565], [1600, 590],
+    ];
+    const surfaceY = (x: number): number => {
+      for (let i = 1; i < surface.length; i++) {
+        const [rightX, rightY] = surface[i];
+        const [leftX, leftY] = surface[i - 1];
+        if (x <= rightX) return leftY + (rightY - leftY) * ((x - leftX) / (rightX - leftX));
+      }
+      return surface[surface.length - 1][1];
+    };
+    const drawBand = (topOffset: number, bottomOffset: number | null, color: number): void => {
+      g.fillStyle(color, 1);
+      g.beginPath();
+      surface.forEach(([x, y], index) => {
+        if (index === 0) g.moveTo(x, y + topOffset); else g.lineTo(x, y + topOffset);
+      });
+      if (bottomOffset === null) {
+        g.lineTo(GAME_WIDTH, GAME_HEIGHT);
+        g.lineTo(0, GAME_HEIGHT);
+      } else {
+        for (let i = surface.length - 1; i >= 0; i--) {
+          const [x, y] = surface[i];
+          g.lineTo(x, y + bottomOffset);
+        }
+      }
+      g.closePath();
+      g.fillPath();
+    };
+    drawBand(225, null, night ? 0x252b49 : 0x363b50);
+    drawBand(88, 225, night ? 0x49383d : 0x65402d);
+    drawBand(0, 88, night ? 0x65434a : 0x8b512d);
+    drawBand(0, 13, night ? 0x3f713d : 0x57933a);
+
+    for (let x = 22; x < GAME_WIDTH; x += 34) {
+      for (let depth = 32; depth < 360; depth += 33) {
+        const seed = Math.floor(x * 11 + depth * 5);
+        const y = surfaceY(x) + depth + Math.sin((x + depth) * 0.07) * 3;
+        if (depth < 90) g.fillStyle(seed % 2 ? (night ? 0x98624b : 0xc17a42) : (night ? 0x372f3a : 0x633b29), 0.72);
+        else if (depth < 225) g.fillStyle(seed % 2 ? (night ? 0x9b674f : 0xa96537) : (night ? 0x302b39 : 0x51352c), 0.75);
+        else g.fillStyle(seed % 2 ? (night ? 0x707b98 : 0x818b91) : (night ? 0x292840 : 0x272d3d), 0.76);
+        const size = 3 + Math.abs(seed % 5);
+        g.fillRect(x + (seed % 7) - 3, y, size + 3, Math.max(2, size - 1));
+      }
+    }
+
+    g.lineStyle(10, night ? 0x37683b : 0x477a35, 1);
     g.beginPath();
-    g.moveTo(0, 590); g.lineTo(140, 567); g.lineTo(320, 590); g.lineTo(470, 575);
-    g.lineTo(640, 625); g.lineTo(800, 670); g.lineTo(960, 630); g.lineTo(1120, 580);
-    g.lineTo(1300, 590); g.lineTo(1450, 565); g.lineTo(1600, 590); g.strokePath();
+    surface.forEach(([x, y], index) => index === 0 ? g.moveTo(x, y) : g.lineTo(x, y));
+    g.strokePath();
+    g.lineStyle(4, night ? 0x87c954 : 0xb4e65b, 1);
+    g.beginPath();
+    surface.forEach(([x, y], index) => index === 0 ? g.moveTo(x, y - 2) : g.lineTo(x, y - 2));
+    g.strokePath();
   }
 
   private drawBuildGrids(): void {

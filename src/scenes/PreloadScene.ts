@@ -28,6 +28,10 @@ export class PreloadScene extends Phaser.Scene {
     this.createTankTexture("tank-lime-preview", "#69a91d", "#c8ef45", false, "rocket", true);
     this.createTankTexture("tank-violet", "#7044c7", "#c39aff", false, "scout");
     this.createTankTexture("tank-violet-preview", "#7044c7", "#c39aff", false, "scout", true);
+    this.createBattleBackground("battle-day-background", false, 2200);
+    this.createBattleBackground("battle-night-background", true, 2200);
+    this.createBattleBackground("phase-day-background", false, 800);
+    this.createBattleBackground("phase-night-background", true, 800);
     this.createNightHaloTexture();
     this.createDrillTexture();
     this.createProjectileTextures();
@@ -362,6 +366,118 @@ export class PreloadScene extends Phaser.Scene {
     ctx.clearRect(0, 0, 128, 128);
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 128, 128);
+    texture.refresh();
+  }
+
+  private createBattleBackground(key: string, night: boolean, width: number): void {
+    const height = 900;
+    const scale = width / 2200;
+    const sx = (value: number): number => value * scale;
+    const texture = this.textures.createCanvas(key, width, height);
+    if (!texture) throw new Error(`Failed to create texture: ${key}`);
+    const ctx = texture.getContext();
+    ctx.imageSmoothingEnabled = false;
+
+    const sky = ctx.createLinearGradient(0, 0, 0, height);
+    if (night) {
+      sky.addColorStop(0, "#090d42");
+      sky.addColorStop(0.38, "#29216f");
+      sky.addColorStop(0.72, "#764783");
+      sky.addColorStop(1, "#f28467");
+    } else {
+      sky.addColorStop(0, "#1389c9");
+      sky.addColorStop(0.4, "#48c9df");
+      sky.addColorStop(0.74, "#ffbd74");
+      sky.addColorStop(1, "#fff0a0");
+    }
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, width, height);
+
+    if (night) {
+      for (let i = 0; i < Math.round(210 * scale); i++) {
+        const x = (i * 967 + 83) % width;
+        const y = (i * 193 + 29) % 430;
+        const size = i % 13 === 0 ? 3 : i % 4 === 0 ? 2 : 1;
+        ctx.fillStyle = i % 7 === 0 ? "#70eaff" : "#fff2cd";
+        ctx.globalAlpha = i % 5 === 0 ? 0.95 : 0.66;
+        ctx.fillRect(x, y, size, size);
+        if (i % 13 === 0) {
+          ctx.globalAlpha = 0.4;
+          ctx.fillRect(x - 5, y + 1, 13, 1);
+          ctx.fillRect(x + 1, y - 5, 1, 13);
+        }
+      }
+      ctx.globalAlpha = 1;
+      const moonX = sx(1580), moonRadius = sx(47), glowRadius = sx(160);
+      ctx.save();
+      ctx.translate(moonX, 172);
+      const moonGlow = ctx.createRadialGradient(0, 0, 12 * scale, 0, 0, glowRadius);
+      moonGlow.addColorStop(0, "rgba(149,202,255,0.35)");
+      moonGlow.addColorStop(1, "rgba(100,141,255,0)");
+      ctx.fillStyle = moonGlow;
+      ctx.fillRect(-glowRadius, -glowRadius, glowRadius * 2, glowRadius * 2);
+      ctx.fillStyle = "#d8e8ff";
+      ctx.beginPath(); ctx.arc(0, 0, moonRadius, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#a9bee9";
+      ctx.fillRect(-20 * scale, -22, 13 * scale, 9); ctx.fillRect(17 * scale, 10, 17 * scale, 11); ctx.fillRect(-33 * scale, 21, 10 * scale, 8);
+      ctx.restore();
+    } else {
+      const sunX = sx(1090), sunRadius = sx(68), sunGlowRadius = sx(260);
+      const sunGlow = ctx.createRadialGradient(sunX, 420, 20 * scale, sunX, 420, sunGlowRadius);
+      sunGlow.addColorStop(0, "rgba(255,255,215,0.96)");
+      sunGlow.addColorStop(0.24, "rgba(255,238,160,0.62)");
+      sunGlow.addColorStop(1, "rgba(255,204,104,0)");
+      ctx.fillStyle = sunGlow;
+      ctx.fillRect(sunX - sunGlowRadius, 420 - sunGlowRadius, sunGlowRadius * 2, sunGlowRadius * 2);
+      ctx.fillStyle = "#fff8cb";
+      ctx.beginPath(); ctx.arc(sunX, 420, sunRadius, 0, Math.PI * 2); ctx.fill();
+    }
+
+    const drawCloud = (x: number, y: number, w: number, h: number): void => {
+      ctx.save();
+      ctx.fillStyle = night ? "rgba(133,119,194,0.7)" : "rgba(244,255,255,0.86)";
+      ctx.beginPath();
+      ctx.ellipse(x, y, w * 0.5, h * 0.34, 0, 0, Math.PI * 2);
+      ctx.ellipse(x - w * 0.25, y + 1, w * 0.23, h * 0.4, 0, 0, Math.PI * 2);
+      ctx.ellipse(x - w * 0.08, y - h * 0.18, w * 0.24, h * 0.44, 0, 0, Math.PI * 2);
+      ctx.ellipse(x + w * 0.18, y - h * 0.1, w * 0.25, h * 0.38, 0, 0, Math.PI * 2);
+      ctx.ellipse(x + w * 0.35, y + 2, w * 0.18, h * 0.28, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = night ? "rgba(188,153,213,0.22)" : "rgba(255,255,255,0.64)";
+      ctx.beginPath();
+      ctx.ellipse(x - w * 0.08, y - h * 0.2, w * 0.16, h * 0.22, 0, Math.PI, Math.PI * 2);
+      ctx.ellipse(x + w * 0.19, y - h * 0.1, w * 0.15, h * 0.18, 0, Math.PI, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    };
+    drawCloud(sx(350), 235, sx(500), 125);
+    drawCloud(sx(1060), 330, sx(430), 90);
+    drawCloud(sx(1800), 225, sx(590), 140);
+
+    const drawMountainRange = (baseY: number, peakHeight: number, phase: number, color: string): void => {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(0, baseY);
+      for (let x = 0; x <= width; x += 34) {
+        const broadPeak = Math.abs(Math.sin((x / scale) * 0.0047 + phase));
+        const sharpPeak = Math.abs(Math.sin((x / scale) * 0.013 + phase * 2));
+        const y = baseY - Math.pow(broadPeak, 4) * peakHeight - sharpPeak * 22;
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(width, height);
+      ctx.lineTo(0, height);
+      ctx.closePath();
+      ctx.fill();
+    };
+    drawMountainRange(620, 205, 0.2, night ? "#3d3479" : "#687f9a");
+    drawMountainRange(675, 142, 1.1, night ? "#25275e" : "#426a77");
+
+    // Soft haze separates the mountain layers from the destructible foreground.
+    const haze = ctx.createLinearGradient(0, 480, 0, 730);
+    haze.addColorStop(0, night ? "rgba(111,107,164,0)" : "rgba(255,231,164,0)");
+    haze.addColorStop(1, night ? "rgba(57,94,116,0.7)" : "rgba(133,193,141,0.62)");
+    ctx.fillStyle = haze;
+    ctx.fillRect(0, 480, width, 250);
     texture.refresh();
   }
 

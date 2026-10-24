@@ -1,13 +1,14 @@
 import Phaser from "phaser";
 import {
   BLOCK_HP, BATTLE_WORLD_WIDTH, BUILD_COLS, BUILD_ORIGIN_X, BUILD_ROWS, GAME_HEIGHT, GAME_WIDTH, TANK_X,
-  TILE_SIZE, addBlockImage, baseTerrainY, clamp, distance, drawSky,
+  TILE_SIZE, addBlockImage, clamp, distance,
 } from "../grid";
 import { gameState, MAX_HP, otherPlayerId, playerById, type PlayerId, type TileType, type WeaponType } from "../state";
 
 const TERRAIN_STEP = 8;
-const BATTLE_P1_X = 445;
-const BATTLE_P2_X = 1755;
+// Keep the opening distance inside the missile's normal-power flight range.
+const BATTLE_P1_X = 650;
+const BATTLE_P2_X = 1550;
 const BATTLE_P1_BUILD_OFFSET = BATTLE_P1_X - TANK_X[1];
 const BATTLE_P2_BUILD_OFFSET = BATTLE_P2_X - TANK_X[2];
 const BATTLE_BASE_ZOOM = 1;
@@ -18,7 +19,7 @@ const TANK_MOVE_SPEED = 190; // pixels per second
 const TANK_FUEL_PER_PIXEL = 0.04; // 4 fuel per 100 pixels
 const WEAPONS: Record<WeaponType, { label: string; damage: number; radius: number; speed: number; gravity: number; color: number }> = {
   shell: { label: "TANK SHOT", damage: 1, radius: 23, speed: 660, gravity: 520, color: 0xffefb0 },
-  missile: { label: "MISSILE", damage: 10, radius: 72, speed: 520, gravity: 390, color: 0xff9a38 },
+  missile: { label: "MISSILE", damage: 10, radius: 72, speed: 700, gravity: 390, color: 0xff9a38 },
   boomerang: { label: "BOOMERANG", damage: 2, radius: 31, speed: 700, gravity: 205, color: 0x74f2ff },
 };
 
@@ -28,7 +29,9 @@ interface BattleBlock {
   row: number;
   type: TileType;
   hp: number;
+  maxHp: number;
   image: Phaser.GameObjects.Image;
+  crack: Phaser.GameObjects.Graphics;
   x: number;
   y: number;
 }
@@ -125,8 +128,10 @@ export class BattleScene extends Phaser.Scene {
 
     gameState.selectedWeapon = "shell";
     gameState.round = 1;
-    drawSky(this, false, BATTLE_WORLD_WIDTH);
-    this.drawArenaGrid();
+    this.add.image(BATTLE_WORLD_WIDTH / 2, GAME_HEIGHT / 2,
+      gameState.nightMode ? "battle-night-background" : "battle-day-background")
+      .setDisplaySize(BATTLE_WORLD_WIDTH, GAME_HEIGHT)
+      .setDepth(-10);
     this.createTerrain();
     this.drawTerrain();
     const p1FacesLeftByDefault = playerById(1).tankTexture === "tank-red";
@@ -137,9 +142,6 @@ export class BattleScene extends Phaser.Scene {
     };
     this.cannonGraphics = this.add.graphics().setDepth(8);
     this.createBattleBlocks();
-    if (gameState.nightMode) {
-      this.add.rectangle(BATTLE_WORLD_WIDTH / 2, GAME_HEIGHT / 2, BATTLE_WORLD_WIDTH, GAME_HEIGHT, 0x09134c, 0.48).setDepth(6.5);
-    }
     this.aimGraphics = this.add.graphics().setDepth(15);
     this.createHud();
     this.uiCamera = this.cameras.add(0, 0, GAME_WIDTH, GAME_HEIGHT);
@@ -301,48 +303,88 @@ export class BattleScene extends Phaser.Scene {
 
   private createTerrain(): void {
     this.terrain = [];
-    for (let x = 0; x <= BATTLE_WORLD_WIDTH; x += TERRAIN_STEP) this.terrain.push(baseTerrainY(x, BATTLE_WORLD_WIDTH));
+    for (let x = 0; x <= BATTLE_WORLD_WIDTH; x += TERRAIN_STEP) {
+      const valley = 220 * Math.exp(-Math.pow((x - 1100) / 250, 2));
+      const leftRidge = 30 * Math.exp(-Math.pow((x - 620) / 245, 2));
+      const rightRidge = 48 * Math.exp(-Math.pow((x - 1570) / 255, 2));
+      const unevenSoil = 5 * Math.sin(x / 57) + 3 * Math.sin(x / 23) + 2 * Math.sin(x / 13);
+      this.terrain.push(clamp(430 + valley + leftRidge + rightRidge + unevenSoil, 410, 700));
+    }
     this.terrainGraphics = this.add.graphics().setDepth(2);
   }
 
   private drawTerrain(): void {
     const g = this.terrainGraphics;
     g.clear();
-    const drawLayer = (offset: number, color: number): void => {
+    const night = gameState.nightMode;
+    const drawBand = (topOffset: number, bottomOffset: number | null, color: number): void => {
       g.fillStyle(color, 1);
       g.beginPath();
       for (let i = 0; i < this.terrain.length; i++) {
         const x = i * TERRAIN_STEP;
-        const y = Math.min(GAME_HEIGHT, this.terrain[i] + offset);
+        const y = Math.max(0, Math.min(GAME_HEIGHT, this.terrain[i] + topOffset));
         if (i === 0) g.moveTo(x, y); else g.lineTo(x, y);
       }
-      g.lineTo(BATTLE_WORLD_WIDTH, GAME_HEIGHT);
-      g.lineTo(0, GAME_HEIGHT);
+      if (bottomOffset === null) {
+        g.lineTo(BATTLE_WORLD_WIDTH, GAME_HEIGHT);
+        g.lineTo(0, GAME_HEIGHT);
+      } else {
+        for (let i = this.terrain.length - 1; i >= 0; i--) {
+          const x = i * TERRAIN_STEP;
+          const y = Math.min(GAME_HEIGHT, this.terrain[i] + bottomOffset);
+          g.lineTo(x, y);
+        }
+      }
       g.closePath();
       g.fillPath();
     };
-    drawLayer(0, 0x92572f);
-    g.lineStyle(7, 0x4c8a2d, 1);
+
+    // Layered soil and rock make the valley read like a dug-out battlefield.
+    drawBand(250, null, night ? 0x252b49 : 0x363b50);
+    drawBand(88, 250, night ? 0x49383d : 0x65402d);
+    drawBand(0, 88, night ? 0x65434a : 0x8b512d);
+    drawBand(0, 12, night ? 0x3f713d : 0x57933a);
+
+    // Pixel flecks and angular stones break up the broad earth bands.
+    for (let x = 18; x < BATTLE_WORLD_WIDTH; x += 31) {
+      const surfaceY = this.terrainAt(x);
+      for (let depth = 28; depth < 430; depth += 29) {
+        const y = surfaceY + depth + Math.sin((x + depth) * 0.09) * 4;
+        if (y > GAME_HEIGHT - 7) continue;
+        const seed = Math.abs(Math.floor(x * 13 + depth * 7));
+        const size = 2 + (seed % 5);
+        if (depth < 100) {
+          g.fillStyle((seed % 2 === 0 ? (night ? 0x98624b : 0xc17a42) : (night ? 0x372f3a : 0x633b29)), 0.72);
+          g.fillRect(x + (seed % 11) - 5, y, size + 2, Math.max(2, size - 1));
+        } else if (depth < 250) {
+          g.fillStyle(seed % 2 === 0 ? (night ? 0x9b674f : 0xa96537) : (night ? 0x302b39 : 0x51352c), 0.75);
+          g.fillRect(x + (seed % 9) - 4, y, size + 4, size);
+        } else {
+          g.fillStyle(seed % 2 === 0 ? (night ? 0x707b98 : 0x818b91) : (night ? 0x292840 : 0x272d3d), 0.76);
+          g.fillRect(x + (seed % 13) - 6, y, size + 3, size + 2);
+        }
+        if (seed % 4 === 0) {
+          g.fillStyle(night ? 0x31283b : 0x382b2a, 0.58);
+          g.fillRect(x + 5, y + 5, size + 5, 2);
+        }
+      }
+    }
+
+    // A bright grass cap and darker underside follow the sculpted ridge.
+    g.lineStyle(11, night ? 0x37683b : 0x477a35, 1);
     g.beginPath();
     for (let i = 0; i < this.terrain.length; i++) {
       const x = i * TERRAIN_STEP;
       if (i === 0) g.moveTo(x, this.terrain[i]); else g.lineTo(x, this.terrain[i]);
     }
     g.strokePath();
-    g.lineStyle(2, 0xc2eb61, 0.95);
+    g.lineStyle(4, night ? 0x87c954 : 0xb4e65b, 1);
     g.beginPath();
     for (let i = 0; i < this.terrain.length; i++) {
       const x = i * TERRAIN_STEP;
-      if (i === 0) g.moveTo(x, this.terrain[i] - 3); else g.lineTo(x, this.terrain[i] - 3);
+      if (i === 0) g.moveTo(x, this.terrain[i] - 2); else g.lineTo(x, this.terrain[i] - 2);
     }
     g.strokePath();
-  }
-
-  private drawArenaGrid(): void {
-    const grid = this.add.graphics().setDepth(1);
-    grid.lineStyle(1, 0xe6f5ff, 0.12);
-    for (let x = 0; x <= BATTLE_WORLD_WIDTH; x += 40) grid.lineBetween(x, 0, x, GAME_HEIGHT);
-    for (let y = 0; y <= GAME_HEIGHT; y += 40) grid.lineBetween(0, y, BATTLE_WORLD_WIDTH, y);
   }
 
   private createBattleBlocks(): void {
@@ -353,8 +395,41 @@ export class BattleScene extends Phaser.Scene {
         const groundY = this.terrainAt(id === 1 ? BATTLE_P1_X : BATTLE_P2_X);
         const y = groundY - (BUILD_ROWS - placed.row - 0.5) * TILE_SIZE;
         const image = addBlockImage(this, x, y, placed.type, { size: TILE_SIZE }).setDepth(6);
-        this.blocks.push({ ownerId: id, col: placed.col, row: placed.row, type: placed.type, hp: BLOCK_HP[placed.type], image, x, y });
+        const crack = this.add.graphics().setPosition(x, y).setDepth(6.5);
+        this.blocks.push({ ownerId: id, col: placed.col, row: placed.row, type: placed.type, hp: BLOCK_HP[placed.type], maxHp: BLOCK_HP[placed.type], image, crack, x, y });
       }
+    }
+  }
+
+  private drawBattleBlockCracks(block: BattleBlock): void {
+    const crack = block.crack;
+    crack.clear();
+    if (block.hp >= block.maxHp) return;
+
+    const damageRatio = 1 - block.hp / block.maxHp;
+    crack.lineStyle(3, gameState.nightMode ? 0x17172a : 0x151515, 0.94);
+    crack.beginPath();
+    crack.moveTo(-10, -14);
+    crack.lineTo(-2, -4);
+    crack.lineTo(-7, 3);
+    crack.lineTo(2, 14);
+    crack.strokePath();
+
+    if (damageRatio >= 0.5) {
+      crack.beginPath();
+      crack.moveTo(10, -14);
+      crack.lineTo(3, -5);
+      crack.lineTo(9, 2);
+      crack.lineTo(4, 9);
+      crack.strokePath();
+    }
+    if (damageRatio >= 0.75) {
+      crack.beginPath();
+      crack.moveTo(-15, 6);
+      crack.lineTo(-5, 2);
+      crack.lineTo(1, 9);
+      crack.lineTo(12, 5);
+      crack.strokePath();
     }
   }
 
@@ -582,7 +657,8 @@ export class BattleScene extends Phaser.Scene {
     let returning = false;
     this.aimGraphics.lineStyle(2, color, alpha);
 
-    for (let i = 1; i <= (boomerang ? 100 : 28); i++) {
+    const sampleCount = boomerang ? 100 : gameState.selectedWeapon === "missile" ? 96 : 48;
+    for (let i = 1; i <= sampleCount; i++) {
       const t = 0.055;
       if (boomerang && !returning && (dir === 1 ? x >= enemyX + 70 : x <= enemyX - 70)) returning = true;
       if (boomerang && returning) {
@@ -795,9 +871,23 @@ export class BattleScene extends Phaser.Scene {
       const blockDamage = Math.max(1, Math.round(projectile.damage * falloff));
       block.hp -= blockDamage;
       block.image.setAlpha(clamp(0.48 + 0.52 * (block.hp / BLOCK_HP[block.type]), 0.18, 1));
-      this.emitBlockParticles(block.x, block.y, block.type === "dirt" ? 0xc8915f : block.type === "stone" ? 0xc4d0d5 : 0xb7a4e4, block.hp <= 0 ? 13 : 3);
+      this.drawBattleBlockCracks(block);
+      this.emitBlockParticles(block.x, block.y, block.type === "dirt" ? 0xc8915f : block.type === "stone" ? 0xc4d0d5 : 0xb7a4e4, block.hp <= 0 ? 26 : 9);
+      if (block.hp > 0) {
+        this.tweens.add({ targets: [block.image, block.crack], angle: { from: -5, to: 5 }, yoyo: true, duration: 70, repeat: 1 });
+      }
       if (block.hp <= 0) {
-        block.image.destroy();
+        this.tweens.add({
+          targets: [block.image, block.crack],
+          scale: 0.12,
+          angle: Phaser.Math.Between(-12, 12),
+          alpha: 0,
+          duration: 240,
+          onComplete: () => {
+            block.image.destroy();
+            block.crack.destroy();
+          },
+        });
         this.blocks = this.blocks.filter((entry) => entry !== block);
         const ownerStructure = playerById(block.ownerId).structure;
         const index = ownerStructure.findIndex((entry) => entry.col === block.col && entry.row === block.row);
@@ -1070,15 +1160,16 @@ export class BattleScene extends Phaser.Scene {
 
   private emitBlockParticles(x: number, y: number, color: number, count: number): void {
     for (let i = 0; i < count; i++) {
-      const particle = this.add.rectangle(x, y, Phaser.Math.Between(3, 6), Phaser.Math.Between(3, 6), color, 1).setDepth(12);
+      const size = Phaser.Math.Between(4, 8);
+      const particle = this.add.rectangle(x, y, size, size, color, 1).setDepth(12);
       this.tweens.add({
         targets: particle,
-        x: x + Phaser.Math.Between(-30, 30),
-        y: y + Phaser.Math.Between(8, 52),
+        x: x + Phaser.Math.Between(-48, 48),
+        y: y + Phaser.Math.Between(18, 78),
         angle: Phaser.Math.Between(-180, 180),
         alpha: 0,
-        duration: Phaser.Math.Between(260, 500),
-        ease: "Cubic.easeIn",
+        duration: Phaser.Math.Between(600, 1000),
+        ease: "Cubic.easeOut",
         onComplete: () => particle.destroy(),
       });
     }
