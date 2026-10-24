@@ -5,6 +5,10 @@ export class PreloadScene extends Phaser.Scene {
     super("PreloadScene");
   }
 
+  preload(): void {
+    this.load.image("tankcraft-logo", "/assets/tankcraft-logo.png");
+  }
+
   create(): void {
     this.createPixelTile("tile-dirt", "#95572f", ["#713d21", "#bd7540", "#a95e30", "#804625"]);
     this.createPixelTile("tile-grass", "#95572f", ["#713d21", "#bd7540", "#a95e30", "#804625"], true);
@@ -119,7 +123,7 @@ export class PreloadScene extends Phaser.Scene {
       return `rgb(${channels[0]},${channels[1]},${channels[2]})`;
     };
     const vibrantColor = `#${baseColor.slice(1).match(/../g)!.map((part) =>
-      Math.min(255, Math.round(Number.parseInt(part, 16) * 1.2)).toString(16).padStart(2, "0"),
+      Math.min(255, Math.round(Number.parseInt(part, 16) * 1.35)).toString(16).padStart(2, "0"),
     ).join("")}`;
     const dark = adjust(vibrantColor, -0.48);
     const light = adjust(vibrantColor, 0.38);
