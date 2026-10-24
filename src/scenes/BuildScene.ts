@@ -25,8 +25,8 @@ export class BuildScene extends Phaser.Scene {
   private hudGraphics!: Phaser.GameObjects.Graphics;
   private timerGraphics!: Phaser.GameObjects.Graphics;
   private timerText!: Phaser.GameObjects.Text;
-  private resourceText!: Phaser.GameObjects.Text;
   private selectionText!: Phaser.GameObjects.Text;
+  private inventoryLabels: Partial<Record<TileType, Phaser.GameObjects.Text>> = {};
   private keyboardKeys!: {
     one: Phaser.Input.Keyboard.Key;
     two: Phaser.Input.Keyboard.Key;
@@ -161,10 +161,6 @@ export class BuildScene extends Phaser.Scene {
     this.add.text(405, 815, "UNDO\n(Z)", { fontFamily: "Arial Black, Arial, sans-serif", fontSize: "20px", color: "#ffffff", align: "center", stroke: "#111111", strokeThickness: 3 }).setOrigin(0.5).setDepth(23);
     this.add.rectangle(1288, 815, 180, 74, 0x248334, 1).setStrokeStyle(5, 0x6cff69, 1).setDepth(22);
     this.add.text(1288, 815, "READY", { fontFamily: "Arial Black, Arial, sans-serif", fontSize: "32px", color: "#ffffff", stroke: "#0c3912", strokeThickness: 5 }).setOrigin(0.5).setDepth(23);
-    this.resourceText = this.add.text(GAME_WIDTH / 2, 752, "", {
-      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "18px", color: "#fff8e2",
-      stroke: "#121921", strokeThickness: 4, align: "center",
-    }).setOrigin(0.5).setDepth(22);
     this.selectionText = this.add.text(GAME_WIDTH / 2, 883, "Select a tile, then drag across your grid to place several blocks. Keep the tank area clear.", {
       fontFamily: "Arial", fontSize: "16px", color: "#e7e9e8", stroke: "#171b20", strokeThickness: 3,
     }).setOrigin(0.5).setDepth(24);
@@ -173,8 +169,15 @@ export class BuildScene extends Phaser.Scene {
   private makeTileButton(x: number, y: number, type: TileType, number: string): void {
     const tint = type === "dirt" ? 0x3f332a : type === "stone" ? 0x343a40 : 0x292238;
     this.add.rectangle(x, y, 112, 70, tint, 1).setStrokeStyle(3, 0xb0b4b6, 1).setDepth(22);
-    addBlockImage(this, x - 29, y - 5, type, { size: 34 }).setDepth(23);
-    this.add.text(x + 10, y - 20, number, { fontFamily: "Arial Black, Arial, sans-serif", fontSize: "15px", color: "#ffffff", stroke: "#000000", strokeThickness: 3 }).setOrigin(0.5).setDepth(24);
+    addBlockImage(this, x - 20, y - 5, type, { size: 32 }).setDepth(23);
+    this.add.circle(x - 49, y - 24, 10, 0x111820, 1).setStrokeStyle(1, 0xd5e3e9, 0.9).setDepth(24);
+    this.add.text(x - 49, y - 24, number, {
+      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "12px", color: "#ffffff", stroke: "#000000", strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(25);
+    this.inventoryLabels[type] = this.add.text(x + 1, y - 5, "", {
+      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "11px", color: "#ffffff", stroke: "#111111", strokeThickness: 3,
+      lineSpacing: 1,
+    }).setOrigin(0, 0.5).setDepth(24);
     this.add.text(x + 17, y + 22, type === "obsidian" ? "OBSIDIAN" : type.toUpperCase(), {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: type === "obsidian" ? "11px" : "13px", color: "#ffffff", stroke: "#111111", strokeThickness: 3,
     }).setOrigin(0.5).setDepth(24);
@@ -307,10 +310,9 @@ export class BuildScene extends Phaser.Scene {
     }
     const p1 = playerById(1);
     const p2 = playerById(2);
-    this.resourceText.setText(
-      `P1: Dirt ${p1.inventory.dirt} • Stone ${p1.inventory.stone} • Obsidian ${p1.inventory.obsidian} • Iron ${p1.iron}` +
-      `       |       P2: Dirt ${p2.inventory.dirt} • Stone ${p2.inventory.stone} • Obsidian ${p2.inventory.obsidian} • Iron ${p2.iron}`,
-    );
+    for (const type of ["dirt", "stone", "obsidian"] as TileType[]) {
+      this.inventoryLabels[type]?.setText(`P1 ${p1.inventory[type]}\nP2 ${p2.inventory[type]}`);
+    }
   }
 
   private drawTimerBar(): void {

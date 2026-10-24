@@ -50,6 +50,7 @@ interface ProjectileState {
 interface WeaponButtonVisual {
   background: Phaser.GameObjects.Rectangle;
   glow: Phaser.GameObjects.Rectangle;
+  icon: Phaser.GameObjects.Image;
   title: Phaser.GameObjects.Text;
   chargeText?: Phaser.GameObjects.Text;
   chargeBar?: Phaser.GameObjects.Graphics;
@@ -77,6 +78,7 @@ export class BattleScene extends Phaser.Scene {
     2: { missile: 0, boomerang: 0 },
   };
   private weaponButtons: Partial<Record<WeaponType, WeaponButtonVisual>> = {};
+  private weaponButtonReady: Record<WeaponType, boolean> = { shell: true, missile: false, boomerang: false };
 
   // Drag-to-aim + hold-to-charge controls.
   private isAiming = false;
@@ -340,16 +342,21 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private makeWeaponButton(x: number, type: WeaponType, label: string, color: number): void {
-    const glow = this.add.rectangle(x, 850, 160, 78, color, 0).setDepth(25);
+    const glow = this.add.rectangle(x, 850, 160, 78, color, 0)
+      .setStrokeStyle(4, color, 0.9).setDepth(25);
     const background = this.add.rectangle(x, 850, 148, 64, color, 1)
       .setStrokeStyle(2, 0xaec2cb, 0.9).setDepth(26)
       .setInteractive({ useHandCursor: true });
     background.on("pointerdown", () => this.selectWeapon(type));
     const chargedWeapon = type !== "shell";
-    const title = this.add.text(x, chargedWeapon ? 837 : 849, label, {
-      fontFamily: "Arial Black, Arial, sans-serif", fontSize: type === "boomerang" ? "13px" : "15px", color: "#ffffff", stroke: "#10151a", strokeThickness: 4,
+    const icon = this.add.image(x - 43, chargedWeapon ? 837 : 850, `projectile-${type}`)
+      .setScale(type === "shell" ? 0.72 : 0.62).setDepth(27);
+    const title = this.add.text(x + 12, chargedWeapon ? 837 : 850, label, {
+      fontFamily: "Arial Black, Arial, sans-serif",
+      fontSize: type === "boomerang" ? "11px" : type === "shell" ? "11px" : "14px",
+      color: "#ffffff", stroke: "#10151a", strokeThickness: 4,
     }).setOrigin(0.5).setDepth(27);
-    const visual: WeaponButtonVisual = { background, glow, title };
+    const visual: WeaponButtonVisual = { background, glow, icon, title };
     if (chargedWeapon) {
       visual.chargeText = this.add.text(x, 857, "0%", {
         fontFamily: "Arial Black, Arial, sans-serif", fontSize: "12px", color: "#d5dce0", stroke: "#10151a", strokeThickness: 3,
@@ -458,15 +465,20 @@ export class BattleScene extends Phaser.Scene {
     for (const [x, type] of weaponButtons) {
       const selected = gameState.selectedWeapon === type;
       const visual = this.weaponButtons[type];
+      const actualCharge = type === "shell" ? 100 : playerById(gameState.currentPlayer).charge[type];
       const charge = type === "shell" ? 100 : this.displayedCharge[gameState.currentPlayer][type];
-      const ready = charge >= 100;
+      const ready = actualCharge >= 100;
       const dimAlpha = type === "shell" || ready ? 1 : 0.48;
       visual?.background.setAlpha(dimAlpha).setStrokeStyle(ready && type !== "shell" ? 3 : 2,
         ready && type !== "shell" ? WEAPONS[type].color : 0xaec2cb,
         ready && type !== "shell" ? 1 : 0.7);
       visual?.title.setAlpha(dimAlpha);
-      visual?.chargeText?.setAlpha(dimAlpha).setText(ready ? "READY" : `${Math.round(charge)}%`);
-      visual?.glow.setAlpha(ready && type !== "shell" ? 0.16 + Math.sin(this.time.now / 130) * 0.07 : 0);
+      visual?.icon.setAlpha(dimAlpha);
+      visual?.chargeText?.setAlpha(dimAlpha).setText(ready ? "READY!" : `${Math.round(charge)}%`);
+      if (type !== "shell" && this.weaponButtonReady[type] !== ready && visual) {
+        this.weaponButtonReady[type] = ready;
+        this.animateWeaponButton(type, visual, ready);
+      }
       if (visual?.chargeBar) {
         visual.chargeBar.clear();
         visual.chargeBar.fillStyle(0x05080b, 0.95).fillRoundedRect(x - 58, 869, 116, 6, 3);
@@ -479,6 +491,46 @@ export class BattleScene extends Phaser.Scene {
         selectedIsAvailable ? 1 : 0.45);
       this.hudGraphics.strokeRoundedRect(x - 76, 817, 152, 66, 5);
     }
+  }
+
+  private animateWeaponButton(type: WeaponType, visual: WeaponButtonVisual, ready: boolean): void {
+    const targets = [visual.glow, visual.background, visual.title, visual.chargeText].filter(Boolean) as Phaser.GameObjects.GameObject[];
+    this.tweens.killTweensOf(targets);
+    if (!ready) {
+      visual.glow.setAlpha(0).setScale(1);
+      visual.background.setScale(1);
+      visual.title.setScale(1);
+      visual.chargeText?.setScale(1);
+      return;
+    }
+
+    const color = WEAPONS[type].color;
+    visual.glow.setFillStyle(color, 0.2).setStrokeStyle(5, color, 1).setAlpha(0.9).setScale(0.92);
+    visual.background.setStrokeStyle(3, color, 1).setScale(1);
+    this.tweens.add({
+      targets: visual.glow,
+      alpha: { from: 0.92, to: 0.32 },
+      scale: { from: 0.92, to: 1.18 },
+      duration: 620,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut",
+    });
+    this.tweens.add({
+      targets: visual.background,
+      scale: { from: 1, to: 1.055 },
+      duration: 180,
+      yoyo: true,
+      repeat: 1,
+      ease: "Back.easeOut",
+    });
+    this.tweens.add({
+      targets: visual.chargeText,
+      scale: { from: 1, to: 1.16 },
+      duration: 190,
+      yoyo: true,
+      ease: "Back.easeOut",
+    });
   }
 
   private drawPlayerBars(x: number, y: number, width: number, hp: number, fuel: number, accent: number): void {
