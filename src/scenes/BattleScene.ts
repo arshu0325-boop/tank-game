@@ -6,11 +6,12 @@ import {
 import { gameState, MAX_HP, otherPlayerId, playerById, type PlayerId, type TileType, type WeaponType } from "../state";
 
 const TERRAIN_STEP = 8;
-const BATTLE_P1_X = 350;
-const BATTLE_P2_X = 1850;
+const BATTLE_P1_X = 445;
+const BATTLE_P2_X = 1755;
 const BATTLE_P1_BUILD_OFFSET = BATTLE_P1_X - TANK_X[1];
 const BATTLE_P2_BUILD_OFFSET = BATTLE_P2_X - TANK_X[2];
-const BATTLE_CAMERA_START_X = (BATTLE_WORLD_WIDTH - GAME_WIDTH) / 2;
+const BATTLE_BASE_ZOOM = 1.1;
+const BATTLE_CAMERA_START_X = (BATTLE_WORLD_WIDTH - GAME_WIDTH / BATTLE_BASE_ZOOM) / 2;
 // Tank movement settings. Fuel is charged by actual distance moved.
 const TANK_MOVE_SPEED = 190; // pixels per second
 const TANK_FUEL_PER_PIXEL = 0.04; // 4 fuel per 100 pixels
@@ -82,14 +83,10 @@ export class BattleScene extends Phaser.Scene {
   private weaponButtons: Partial<Record<WeaponType, WeaponButtonVisual>> = {};
   private weaponButtonReady: Record<WeaponType, boolean> = { shell: true, missile: false, boomerang: false };
 
-  // Drag-to-aim + hold-to-charge controls.
+  // Point at the battlefield to aim, then release to fire.
   private isAiming = false;
   private aimPointerId: number | null = null;
-  private slingPullX = 0;
-  private slingPullY = 0;
-  private readonly maxSlingPull = 170;
   private currentAimAngle = -0.55;
-  private dragPower = 0.88;
   private chargeBonus = 0;
   private readonly maxChargeBonus = 0.35;
   private readonly chargeRate = 0.22; // extra power per second while holding
@@ -120,11 +117,10 @@ export class BattleScene extends Phaser.Scene {
     this.isAiming = false;
     this.aimPointerId = null;
     this.chargeBonus = 0;
-    this.dragPower = this.power;
     const camera = this.cameras.main;
     camera.setBounds(0, 0, BATTLE_WORLD_WIDTH, GAME_HEIGHT);
     camera.setScroll(BATTLE_CAMERA_START_X, 0);
-    camera.setZoom(1);
+    camera.setZoom(BATTLE_BASE_ZOOM);
 
     gameState.selectedWeapon = "shell";
     gameState.round = 1;
@@ -203,8 +199,11 @@ export class BattleScene extends Phaser.Scene {
       const pointer = this.input.pointer1.id === this.aimPointerId
         ? this.input.pointer1
         : this.input.activePointer;
-      this.updateDragAim(pointer.worldX, pointer.worldY);
+      this.currentAimAngle = this.aimAngle(gameState.currentPlayer, pointer.worldX, pointer.worldY);
       this.chargeBonus = Math.min(this.maxChargeBonus, this.chargeBonus + this.chargeRate * delta / 1000);
+    } else if (!this.activeProjectile) {
+      const pointer = this.input.activePointer;
+      this.currentAimAngle = this.aimAngle(gameState.currentPlayer, pointer.worldX, pointer.worldY);
     }
 
     if (this.activeProjectile) this.updateProjectile(delta / 1000);
@@ -366,7 +365,7 @@ export class BattleScene extends Phaser.Scene {
     this.weaponText = this.add.text(1400, 870, "TANK SHOT", {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "14px", color: "#f4f4ee", stroke: "#1e2020", strokeThickness: 3,
     }).setOrigin(0.5).setDepth(27);
-    this.add.text(GAME_WIDTH / 2, 893, "PULL BACK FROM YOUR TANK  •  RELEASE TO LAUNCH     |     MOVE: P1 A/D   P2 ←/→     |     POWER: ↑ / ↓", {
+    this.add.text(GAME_WIDTH / 2, 893, "AIM WITH THE CURSOR  •  RELEASE TO FIRE     |     MOVE: P1 A/D   P2 ←/→     |     POWER: ↑ / ↓", {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "13px", color: "#d6e0e5", stroke: "#111820", strokeThickness: 3,
     }).setOrigin(0.5).setDepth(27);
   }
@@ -411,23 +410,17 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
 
-    // Grab the sling at the active tank, then pull it backward to aim.
-    const origin = this.muzzlePosition(gameState.currentPlayer);
-    const tank = this.tanks[gameState.currentPlayer];
-    // Aiming starts by grabbing the sling close to the active tank.
-    if (distance(pointer.worldX, pointer.worldY, origin.x, origin.y) > 112
-      && distance(pointer.worldX, pointer.worldY, tank.x, tank.y - 28) > 104) return;
+    // Hold anywhere in the arena to set cannon angle; release to shoot.
     this.isAiming = true;
     this.aimPointerId = pointer.id;
     this.chargeBonus = 0;
-    this.dragPower = this.power;
-    this.updateDragAim(pointer.worldX, pointer.worldY);
+    this.currentAimAngle = this.aimAngle(gameState.currentPlayer, pointer.worldX, pointer.worldY);
   }
 
   private handlePointerUp(pointer: Phaser.Input.Pointer): void {
     if (!this.isAiming || (this.aimPointerId !== null && pointer.id !== this.aimPointerId)) return;
     if (!this.resolving && !this.activeProjectile) {
-      this.updateDragAim(pointer.worldX, pointer.worldY);
+      this.currentAimAngle = this.aimAngle(gameState.currentPlayer, pointer.worldX, pointer.worldY);
       const angle = this.currentAimAngle;
       const shotPower = this.effectivePower();
       this.cancelAim();
@@ -444,27 +437,8 @@ export class BattleScene extends Phaser.Scene {
     this.aimGraphics?.clear();
   }
 
-  private updateDragAim(pointerX: number, pointerY: number): void {
-    const id = gameState.currentPlayer;
-    const origin = this.muzzlePosition(id);
-    const dir = id === 1 ? 1 : -1;
-
-    // Pulling behind the tank compresses the sling; release launches forward.
-    const rawPullX = Math.max(0, (origin.x - pointerX) * dir);
-    const rawPullY = origin.y - pointerY;
-    const rawLength = Math.hypot(rawPullX, rawPullY);
-    const length = Math.min(this.maxSlingPull, rawLength);
-    const scale = rawLength > 0 ? length / rawLength : 0;
-    const pullX = rawPullX * scale;
-    const pullY = rawPullY * scale;
-    this.slingPullX = origin.x - dir * pullX;
-    this.slingPullY = origin.y - pullY;
-    this.currentAimAngle = clamp(Math.atan2(pullY, Math.max(25, pullX)), -1.34, 0.28);
-    this.dragPower = clamp(0.5 + (length - 24) / 146 * 0.7, 0.5, 1.2);
-  }
-
   private effectivePower(): number {
-    return clamp((this.isAiming ? this.dragPower : this.power) + this.chargeBonus, 0.5, 1.5);
+    return clamp(this.power + this.chargeBonus, 0.5, 1.5);
   }
 
   private selectWeapon(type: WeaponType): void {
@@ -602,26 +576,19 @@ export class BattleScene extends Phaser.Scene {
     const id = gameState.currentPlayer;
     const origin = this.muzzlePosition(id);
     this.drawTrajectory(origin.x, origin.y, this.currentAimAngle, this.effectivePower(), 0x8cffb5, 0.9);
-
-    // Draw the two stretched elastic bands from the tank's sling to the pulled shell.
-    const dir = id === 1 ? 1 : -1;
-    const anchorX = origin.x - dir * 25;
-    this.aimGraphics.lineStyle(8, 0x151a20, 0.9);
-    this.aimGraphics.lineBetween(anchorX, origin.y - 6, this.slingPullX, this.slingPullY - 4);
-    this.aimGraphics.lineBetween(anchorX, origin.y + 6, this.slingPullX, this.slingPullY + 4);
-    this.aimGraphics.lineStyle(3, 0xf0b65a, 0.95);
-    this.aimGraphics.lineBetween(anchorX, origin.y - 6, this.slingPullX, this.slingPullY - 4);
-    this.aimGraphics.lineBetween(anchorX, origin.y + 6, this.slingPullX, this.slingPullY + 4);
-    this.aimGraphics.fillStyle(WEAPONS[gameState.selectedWeapon].color, 0.95);
-    this.aimGraphics.fillCircle(this.slingPullX, this.slingPullY, 8);
+    const pointer = this.input.activePointer;
     this.aimGraphics.lineStyle(2, 0xfff6d1, 0.9);
-    this.aimGraphics.strokeCircle(this.slingPullX, this.slingPullY, 8);
+    this.aimGraphics.strokeCircle(pointer.worldX, pointer.worldY, 9);
+    this.aimGraphics.lineBetween(pointer.worldX - 13, pointer.worldY, pointer.worldX - 6, pointer.worldY);
+    this.aimGraphics.lineBetween(pointer.worldX + 6, pointer.worldY, pointer.worldX + 13, pointer.worldY);
+    this.aimGraphics.lineBetween(pointer.worldX, pointer.worldY - 13, pointer.worldX, pointer.worldY - 6);
+    this.aimGraphics.lineBetween(pointer.worldX, pointer.worldY + 6, pointer.worldX, pointer.worldY + 13);
 
-    // Show the pull-back power meter beside the anchored shell.
+    // Hold to add a little extra firing power.
     const ratio = clamp(this.chargeBonus / this.maxChargeBonus, 0, 1);
-    this.aimGraphics.fillStyle(0x14202a, 0.9).fillRoundedRect(this.slingPullX - 34, this.slingPullY - 28, 68, 9, 4);
+    this.aimGraphics.fillStyle(0x14202a, 0.9).fillRoundedRect(origin.x - 34, origin.y - 52, 68, 9, 4);
     this.aimGraphics.fillStyle(ratio >= 0.8 ? 0xffb13b : 0x64e6ff, 1)
-      .fillRoundedRect(this.slingPullX - 32, this.slingPullY - 26, 64 * ratio, 5, 3);
+      .fillRoundedRect(origin.x - 32, origin.y - 50, 64 * ratio, 5, 3);
   }
 
   private drawTrajectory(
@@ -728,6 +695,7 @@ export class BattleScene extends Phaser.Scene {
     };
     player.shotsFired += 1;
     this.tweens.killTweensOf(this.cameras.main);
+    this.tweens.add({ targets: this.cameras.main, zoom: 1.32, duration: 260, ease: "Quad.easeOut" });
     this.cameras.main.startFollow(projectileImage, true, 0.13, 0.13);
     this.chargeBonus = 0;
     // Firing is free: fuel decreases only when the tank moves.
@@ -993,16 +961,18 @@ export class BattleScene extends Phaser.Scene {
     camera.stopFollow();
     this.tweens.add({
       targets: camera,
-      scrollX: this.battleCameraScrollX(),
+      scrollX: this.battleCameraScrollX(BATTLE_BASE_ZOOM),
+      zoom: BATTLE_BASE_ZOOM,
       duration: 320,
       ease: "Sine.easeInOut",
       onComplete,
     });
   }
 
-  private battleCameraScrollX(): number {
+  private battleCameraScrollX(zoom = this.cameras.main.zoom): number {
     const tanksCenter = (this.tanks[1].x + this.tanks[2].x) / 2;
-    return clamp(tanksCenter - GAME_WIDTH / 2, 0, BATTLE_WORLD_WIDTH - GAME_WIDTH);
+    const viewWidth = GAME_WIDTH / zoom;
+    return clamp(tanksCenter - viewWidth / 2, 0, BATTLE_WORLD_WIDTH - viewWidth);
   }
 
   private muzzlePosition(id: PlayerId): { x: number; y: number } {

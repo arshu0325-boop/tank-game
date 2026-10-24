@@ -23,6 +23,7 @@ const DRILL_WIDTH = 72;
 const DRILL_CENTER_Y = -15;
 const DRILL_TIP_X = DRILL_MOUNT_X + DRILL_WIDTH;
 const DRILL_TIP_Y = DRILL_CENTER_Y;
+const MINE_CAMERA_ZOOM = 1.45;
 
 export class MineScene extends Phaser.Scene {
   private cells = new Map<string, MineCell>();
@@ -103,6 +104,31 @@ export class MineScene extends Phaser.Scene {
         stroke: "#27313b", strokeThickness: 5, align: "center",
       }).setOrigin(0.5).setDepth(20);
     this.updateHud();
+    this.setupMiningCameras();
+  }
+
+  private setupMiningCameras(): void {
+    const halfWidth = GAME_WIDTH / 2;
+    const p1Camera = this.cameras.main;
+    p1Camera.setViewport(0, 0, halfWidth, GAME_HEIGHT)
+      .setBounds(0, 0, halfWidth, GAME_HEIGHT)
+      .setZoom(MINE_CAMERA_ZOOM)
+      .startFollow(this.tanks[1], true, 0.12, 0.12);
+
+    const p2Camera = this.cameras.add(halfWidth, 0, halfWidth, GAME_HEIGHT);
+    p2Camera.setBounds(halfWidth, 0, halfWidth, GAME_HEIGHT)
+      .setZoom(MINE_CAMERA_ZOOM)
+      .startFollow(this.tanks[2], true, 0.12, 0.12);
+
+    // Keep the HUD at normal scale above the two zoomed mining views.
+    const uiCamera = this.cameras.add(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    uiCamera.setZoom(1).setScroll(0, 0);
+    const children = this.children.list as Phaser.GameObjects.GameObject[];
+    const worldObjects = children.filter((child) => (child as Phaser.GameObjects.GameObject & { depth: number }).depth < 20);
+    const interfaceObjects = children.filter((child) => (child as Phaser.GameObjects.GameObject & { depth: number }).depth >= 20);
+    p1Camera.ignore(interfaceObjects);
+    p2Camera.ignore(interfaceObjects);
+    uiCamera.ignore(worldObjects);
   }
 
   update(_time: number, delta: number): void {
@@ -140,9 +166,9 @@ export class MineScene extends Phaser.Scene {
         let type: TileType;
         let ore: "iron" | "coal" | undefined;
         const depth = row - surface;
-        if (depth < 5) {
+        if (depth < 3) {
           type = "dirt";
-        } else if (depth >= 10 && Math.random() < 0.26) {
+        } else if ((depth >= 8 && Math.random() < 0.38) || (depth >= 5 && Math.random() < 0.16)) {
           type = "obsidian";
         } else {
           type = "stone";
