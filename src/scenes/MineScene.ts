@@ -30,6 +30,11 @@ export class MineScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.elapsed = 0;
+    this.timeLeft = MINE_SECONDS;
+    this.transitioning = false;
+    this.cells.clear();
+
     drawSky(this);
     this.createWorld();
     this.createHud();
