@@ -238,7 +238,7 @@ export class MenuScene extends Phaser.Scene {
     } = options;
 
     const width = 410;
-    const height = 274;
+    const height = 300;
     const left = -width / 2;
     const top = -height / 2;
 
@@ -286,7 +286,7 @@ export class MenuScene extends Phaser.Scene {
     }));
 
     // Four evenly spaced instruction sections.
-    let currentY = top + 65;
+    let currentY = top + 63;
 
     controls.forEach((section) => {
       card.add(this.add.text(left + 17, currentY, section.heading, {
@@ -296,21 +296,21 @@ export class MenuScene extends Phaser.Scene {
         stroke: "#0a121b",
         strokeThickness: 2,
       }));
-      currentY += 19;
+      currentY += 17;
 
       section.lines.forEach((line) => {
         card.add(this.add.text(left + 18, currentY, line, {
           fontFamily: "Arial, sans-serif",
-          fontSize: "13px",
+          fontSize: "12px",
           color: "#f2f6fb",
           stroke: "#101923",
           strokeThickness: 1,
           wordWrap: { width: width - 38 },
         }));
-        currentY += 17;
+        currentY += 16;
       });
 
-      currentY += 5;
+      currentY += 3;
     });
 
     // Friendly hover animation.
@@ -371,12 +371,12 @@ export class MenuScene extends Phaser.Scene {
     g.lineTo(1600, 650);
     g.strokePath();
 
-    this.add.image(190, 654, playerById(1).tankTexture)
+    this.add.image(190, 654, `${playerById(1).tankTexture}-preview`)
       .setOrigin(0.5, 1)
       .setScale(1.1)
       .setDepth(2);
 
-    this.add.image(1410, 645, playerById(2).tankTexture)
+    this.add.image(1410, 645, `${playerById(2).tankTexture}-preview`)
       .setOrigin(0.5, 1)
       .setScale(1.1)
       .setDepth(2);

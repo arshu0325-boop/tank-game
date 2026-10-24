@@ -89,8 +89,8 @@ export class ResultScene extends Phaser.Scene {
     g.moveTo(0, 650); g.lineTo(170, 625); g.lineTo(350, 662); g.lineTo(550, 625);
     g.lineTo(780, 685); g.lineTo(1000, 640); g.lineTo(1210, 665); g.lineTo(1410, 620); g.lineTo(1600, 653);
     g.strokePath();
-    const p1 = this.add.image(245, 650, playerById(1).tankTexture).setOrigin(0.5, 1).setScale(1.2).setDepth(2);
-    const p2 = this.add.image(1355, 645, playerById(2).tankTexture).setOrigin(0.5, 1).setFlipX(true).setScale(1.2).setDepth(2);
+    const p1 = this.add.image(245, 650, `${playerById(1).tankTexture}-preview`).setOrigin(0.5, 1).setScale(1.2).setDepth(2);
+    const p2 = this.add.image(1355, 645, `${playerById(2).tankTexture}-preview`).setOrigin(0.5, 1).setFlipX(true).setScale(1.2).setDepth(2);
     this.tweens.add({ targets: p1, y: 645, duration: 900, yoyo: true, repeat: -1, ease: "Sine.InOut" });
     this.tweens.add({ targets: p2, y: 640, duration: 900, delay: 230, yoyo: true, repeat: -1, ease: "Sine.InOut" });
   }
