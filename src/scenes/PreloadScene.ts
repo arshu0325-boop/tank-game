@@ -5,6 +5,10 @@ export class PreloadScene extends Phaser.Scene {
     super("PreloadScene");
   }
 
+  preload(): void {
+    this.load.image("tankcraft-logo", "/assets/tankcraft-logo.png");
+  }
+
   create(): void {
     this.createPixelTile("tile-dirt", "#95572f", ["#713d21", "#bd7540", "#a95e30", "#804625"]);
     this.createPixelTile("tile-grass", "#95572f", ["#713d21", "#bd7540", "#a95e30", "#804625"], true);
