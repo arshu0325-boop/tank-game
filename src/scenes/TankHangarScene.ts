@@ -115,10 +115,10 @@ export class TankHangarScene extends Phaser.Scene {
     }
     this.add.ellipse(x + 5, y + 31, 205, 27, 0x111018, 0.62);
     const previewTexture = `${tank.texture}-preview`;
-    const faceLeft = tank.texture === "tank-red";
+    const faceRightInCard = tank.texture === "tank-red";
     const shadow = this.add.image(x + 7, y - 3, previewTexture)
-      .setScale(1.65).setFlipX(faceLeft).setTint(0x17141b).setAlpha(0.72);
-    const preview = this.add.image(x, y - 11, previewTexture).setScale(1.65).setFlipX(faceLeft);
+      .setScale(1.65).setFlipX(faceRightInCard).setTint(0x17141b).setAlpha(0.72);
+    const preview = this.add.image(x, y - 11, previewTexture).setScale(1.65).setFlipX(faceRightInCard);
     panel.on("pointerover", () => this.tweens.add({ targets: preview, scale: 1.74, duration: 130, ease: "Back.Out" }));
     panel.on("pointerout", () => this.tweens.add({ targets: preview, scale: 1.65, duration: 130, ease: "Sine.Out" }));
     shadow.setScale(1.65);

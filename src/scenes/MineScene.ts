@@ -207,7 +207,7 @@ export class MineScene extends Phaser.Scene {
     const p2Ground = this.tankSupportY(p2X, 2);
     this.tanks = {
       1: this.add.image(p1X, p1Ground, `${playerById(1).tankTexture}-preview`).setOrigin(0.5, 1).setScale(0.95).setDepth(8),
-      2: this.add.image(p2X, p2Ground, `${playerById(2).tankTexture}-preview`).setOrigin(0.5, 1).setScale(0.95).setFlipX(true).setDepth(8),
+      2: this.add.image(p2X, p2Ground, `${playerById(2).tankTexture}-preview`).setOrigin(0.5, 1).setScale(0.95).setDepth(8),
     };
     this.drills = {
       1: this.add.image(p1X + DRILL_MOUNT_X, p1Ground + DRILL_CENTER_Y, "tank-drill").setOrigin(0, 0.5).setDisplaySize(DRILL_WIDTH, 32).setDepth(9),

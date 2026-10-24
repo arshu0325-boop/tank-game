@@ -18,8 +18,8 @@ export class PreloadScene extends Phaser.Scene {
     this.createOreTile("ore-coal", true);
     this.createTankTexture("tank-blue", "#087de0", "#28c5ff", false, "balanced");
     this.createTankTexture("tank-blue-preview", "#087de0", "#28c5ff", false, "balanced", true);
-    this.createTankTexture("tank-red", "#d92d2d", "#ff6960", false, "heavy");
-    this.createTankTexture("tank-red-preview", "#d92d2d", "#ff6960", false, "heavy", true);
+    this.createTankTexture("tank-red", "#d92d2d", "#ff6960", true, "heavy");
+    this.createTankTexture("tank-red-preview", "#d92d2d", "#ff6960", true, "heavy", true);
     this.createTankTexture("tank-gold", "#e99318", "#ffd05a", false, "siege");
     this.createTankTexture("tank-gold-preview", "#e99318", "#ffd05a", false, "siege", true);
     this.createTankTexture("tank-cyan", "#14a9c7", "#73f1ff", false, "twin");

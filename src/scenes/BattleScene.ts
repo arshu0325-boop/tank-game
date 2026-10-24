@@ -136,7 +136,7 @@ export class BattleScene extends Phaser.Scene {
     this.drawTerrain();
     this.tanks = {
       1: this.add.image(BATTLE_P1_X, this.terrainAt(BATTLE_P1_X), playerById(1).tankTexture).setOrigin(0.5, 1).setDepth(7),
-      2: this.add.image(BATTLE_P2_X, this.terrainAt(BATTLE_P2_X), playerById(2).tankTexture).setOrigin(0.5, 1).setFlipX(true).setDepth(7),
+      2: this.add.image(BATTLE_P2_X, this.terrainAt(BATTLE_P2_X), playerById(2).tankTexture).setOrigin(0.5, 1).setDepth(7),
     };
     this.cannonGraphics = this.add.graphics().setDepth(8);
     this.createBattleBlocks();
