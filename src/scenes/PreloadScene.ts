@@ -177,34 +177,6 @@ export class PreloadScene extends Phaser.Scene {
       ctx.beginPath(); ctx.arc(x, y, 1.5, 0, Math.PI * 2); ctx.fill();
     }
 
-    const drawBarrel = (y: number, thickness: number, length: number): void => {
-      ctx.fillStyle = "#111820";
-      ctx.beginPath(); ctx.roundRect(78, y - thickness / 2, length, thickness, thickness / 2); ctx.fill();
-      const barrel = ctx.createLinearGradient(0, y - thickness / 2, 0, y + thickness / 2);
-      barrel.addColorStop(0, "#eff7ff"); barrel.addColorStop(0.42, "#a8bac9"); barrel.addColorStop(1, "#526575");
-      ctx.fillStyle = barrel;
-      ctx.beginPath(); ctx.roundRect(80, y - thickness / 2 + 1, length - 3, thickness - 2, thickness / 2); ctx.fill();
-      ctx.fillStyle = accent;
-      ctx.fillRect(87, y - 1, Math.max(7, length - 34), 2);
-      ctx.fillStyle = "#283440";
-      ctx.fillRect(78 + length - 10, y - thickness / 2 - 1, 4, thickness + 2);
-      ctx.fillStyle = "#dce9f2";
-      ctx.fillRect(78 + length - 4, y - thickness / 2 + 2, 2, thickness - 4);
-    };
-
-    // Each collectible has its own turret and weapon silhouette.
-    if (model === "twin") {
-      drawBarrel(22, 5, 45); drawBarrel(30, 5, 48);
-    } else if (model === "heavy") {
-      drawBarrel(27, 10, 49);
-    } else if (model === "siege") {
-      drawBarrel(24, 8, 54);
-    } else if (model === "balanced") {
-      drawBarrel(27, 7, 46);
-    } else if (model === "scout") {
-      drawBarrel(28, 4, 50);
-    }
-
     const turretBox = model === "heavy" ? { x: 40, y: 15, w: 55, h: 20 }
       : model === "siege" ? { x: 34, y: 13, w: 56, h: 23 }
       : model === "rocket" ? { x: 46, y: 12, w: 53, h: 25 }

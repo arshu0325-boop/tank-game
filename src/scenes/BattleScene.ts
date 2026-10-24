@@ -62,6 +62,7 @@ export class BattleScene extends Phaser.Scene {
   private terrain: number[] = [];
   private terrainGraphics!: Phaser.GameObjects.Graphics;
   private aimGraphics!: Phaser.GameObjects.Graphics;
+  private cannonGraphics!: Phaser.GameObjects.Graphics;
   private hudGraphics!: Phaser.GameObjects.Graphics;
   private blocks: BattleBlock[] = [];
   private tanks!: Record<PlayerId, Phaser.GameObjects.Image>;
@@ -135,6 +136,7 @@ export class BattleScene extends Phaser.Scene {
       1: this.add.image(BATTLE_P1_X, this.terrainAt(BATTLE_P1_X), playerById(1).tankTexture).setOrigin(0.5, 1).setDepth(7),
       2: this.add.image(BATTLE_P2_X, this.terrainAt(BATTLE_P2_X), playerById(2).tankTexture).setOrigin(0.5, 1).setFlipX(true).setDepth(7),
     };
+    this.cannonGraphics = this.add.graphics().setDepth(8);
     this.createBattleBlocks();
     if (gameState.nightMode) {
       this.add.rectangle(BATTLE_WORLD_WIDTH / 2, GAME_HEIGHT / 2, BATTLE_WORLD_WIDTH, GAME_HEIGHT, 0x09134c, 0.48).setDepth(14);
@@ -205,6 +207,7 @@ export class BattleScene extends Phaser.Scene {
       const pointer = this.input.activePointer;
       this.currentAimAngle = this.aimAngle(gameState.currentPlayer, pointer.worldX, pointer.worldY);
     }
+    this.drawCannons();
 
     if (this.activeProjectile) this.updateProjectile(delta / 1000);
     else if (this.isAiming) this.drawTrajectoryPreview();
@@ -410,7 +413,16 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
 
+<<<<<<< HEAD
     // Hold anywhere in the arena to set cannon angle; release to shoot.
+=======
+    // Start aiming near the active tank, then drag backward to set the shot.
+    const origin = this.muzzlePosition(gameState.currentPlayer);
+    const tank = this.tanks[gameState.currentPlayer];
+    // Aiming starts close to the active tank.
+    if (distance(pointer.worldX, pointer.worldY, origin.x, origin.y) > 112
+      && distance(pointer.worldX, pointer.worldY, tank.x, tank.y - 28) > 104) return;
+>>>>>>> d5eb48837729fcb17e1b652711728c9f9e9b4ecd
     this.isAiming = true;
     this.aimPointerId = pointer.id;
     this.chargeBonus = 0;
@@ -576,6 +588,7 @@ export class BattleScene extends Phaser.Scene {
     const id = gameState.currentPlayer;
     const origin = this.muzzlePosition(id);
     this.drawTrajectory(origin.x, origin.y, this.currentAimAngle, this.effectivePower(), 0x8cffb5, 0.9);
+<<<<<<< HEAD
     const pointer = this.input.activePointer;
     this.aimGraphics.lineStyle(2, 0xfff6d1, 0.9);
     this.aimGraphics.strokeCircle(pointer.worldX, pointer.worldY, 9);
@@ -589,6 +602,9 @@ export class BattleScene extends Phaser.Scene {
     this.aimGraphics.fillStyle(0x14202a, 0.9).fillRoundedRect(origin.x - 34, origin.y - 52, 68, 9, 4);
     this.aimGraphics.fillStyle(ratio >= 0.8 ? 0xffb13b : 0x64e6ff, 1)
       .fillRoundedRect(origin.x - 32, origin.y - 50, 64 * ratio, 5, 3);
+=======
+
+>>>>>>> d5eb48837729fcb17e1b652711728c9f9e9b4ecd
   }
 
   private drawTrajectory(
@@ -977,9 +993,29 @@ export class BattleScene extends Phaser.Scene {
 
   private muzzlePosition(id: PlayerId): { x: number; y: number } {
     const dir = id === 1 ? 1 : -1;
-    const x = this.tanks[id].x + dir * 40;
-    const y = this.terrainAt(this.tanks[id].x) - 39;
+    const angle = id === gameState.currentPlayer ? this.currentAimAngle : -0.55;
+    const pivotX = this.tanks[id].x + dir * 6;
+    const pivotY = this.terrainAt(this.tanks[id].x) - 42;
+    const x = pivotX + dir * Math.cos(angle) * 34;
+    const y = pivotY + Math.sin(angle) * 34;
     return { x, y };
+  }
+
+  private drawCannons(): void {
+    this.cannonGraphics.clear();
+    for (const id of [1, 2] as PlayerId[]) {
+      const dir = id === 1 ? 1 : -1;
+      const angle = id === gameState.currentPlayer ? this.currentAimAngle : -0.55;
+      const x = this.tanks[id].x + dir * 6;
+      const y = this.terrainAt(this.tanks[id].x) - 42;
+      const endX = x + dir * Math.cos(angle) * 34;
+      const endY = y + Math.sin(angle) * 34;
+      this.cannonGraphics.lineStyle(10, 0x111820, 1).lineBetween(x, y, endX, endY);
+      this.cannonGraphics.lineStyle(6, 0xa8bac9, 1).lineBetween(x, y, endX, endY);
+      this.cannonGraphics.lineStyle(2, 0xeff7ff, 0.9).lineBetween(x, y - 1, endX, endY - 1);
+      this.cannonGraphics.fillStyle(0x283440, 1).fillCircle(endX, endY, 4);
+      this.cannonGraphics.fillStyle(0xdce9f2, 1).fillCircle(endX, endY, 2);
+    }
   }
 
   private aimAngle(id: PlayerId, pointerX: number, pointerY: number): number {
