@@ -77,6 +77,11 @@ export class BattleScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.blocks = [];
+    this.activeProjectile = null;
+    this.resolving = false;
+    this.fireMessage = "";
+
     gameState.selectedWeapon = "shell";
     gameState.round = 1;
     drawSky(this);
