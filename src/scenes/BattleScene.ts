@@ -1,11 +1,16 @@
 import Phaser from "phaser";
 import {
-  BLOCK_HP, BUILD_COLS, BUILD_ORIGIN_X, BUILD_ROWS, GAME_HEIGHT, GAME_WIDTH,
+  BLOCK_HP, BATTLE_WORLD_WIDTH, BUILD_COLS, BUILD_ORIGIN_X, BUILD_ROWS, GAME_HEIGHT, GAME_WIDTH, TANK_X,
   TILE_SIZE, addBlockImage, baseTerrainY, clamp, distance, drawSky,
 } from "../grid";
 import { gameState, MAX_HP, otherPlayerId, playerById, type PlayerId, type TileType, type WeaponType } from "../state";
 
 const TERRAIN_STEP = 8;
+const BATTLE_P1_X = 350;
+const BATTLE_P2_X = 1850;
+const BATTLE_P1_BUILD_OFFSET = BATTLE_P1_X - TANK_X[1];
+const BATTLE_P2_BUILD_OFFSET = BATTLE_P2_X - TANK_X[2];
+const BATTLE_CAMERA_START_X = (BATTLE_WORLD_WIDTH - GAME_WIDTH) / 2;
 // Tank movement settings. Fuel is charged by actual distance moved.
 const TANK_MOVE_SPEED = 190; // pixels per second
 const TANK_FUEL_PER_PIXEL = 0.04; // 4 fuel per 100 pixels
@@ -38,7 +43,16 @@ interface ProjectileState {
   radius: number;
   gravity: number;
   returning: boolean;
-  image: Phaser.GameObjects.Arc;
+  image: Phaser.GameObjects.Image;
+  trailClock: number;
+}
+
+interface WeaponButtonVisual {
+  background: Phaser.GameObjects.Rectangle;
+  glow: Phaser.GameObjects.Rectangle;
+  title: Phaser.GameObjects.Text;
+  chargeText?: Phaser.GameObjects.Text;
+  chargeBar?: Phaser.GameObjects.Graphics;
 }
 
 export class BattleScene extends Phaser.Scene {
@@ -62,6 +76,7 @@ export class BattleScene extends Phaser.Scene {
     1: { missile: 0, boomerang: 0 },
     2: { missile: 0, boomerang: 0 },
   };
+  private weaponButtons: Partial<Record<WeaponType, WeaponButtonVisual>> = {};
 
   // Drag-to-aim + hold-to-charge controls.
   private isAiming = false;
@@ -100,23 +115,31 @@ export class BattleScene extends Phaser.Scene {
     this.aimPointerId = null;
     this.chargeBonus = 0;
     this.dragPower = this.power;
+    const camera = this.cameras.main;
+    camera.setBounds(0, 0, BATTLE_WORLD_WIDTH, GAME_HEIGHT);
+    camera.setScroll(BATTLE_CAMERA_START_X, 0);
+    camera.setZoom(1);
 
     gameState.selectedWeapon = "shell";
     gameState.round = 1;
     for (const id of [1, 2] as PlayerId[]) {
       this.displayedCharge[id] = { ...playerById(id).charge };
     }
-    drawSky(this);
+    drawSky(this, false, BATTLE_WORLD_WIDTH);
     this.drawArenaGrid();
     this.createTerrain();
     this.drawTerrain();
     this.tanks = {
-      1: this.add.image(280, this.terrainAt(280), "tank-blue").setOrigin(0.5, 1).setDepth(7),
-      2: this.add.image(1320, this.terrainAt(1320), "tank-red").setOrigin(0.5, 1).setDepth(7),
+      1: this.add.image(BATTLE_P1_X, this.terrainAt(BATTLE_P1_X), playerById(1).tankTexture).setOrigin(0.5, 1).setDepth(7),
+      2: this.add.image(BATTLE_P2_X, this.terrainAt(BATTLE_P2_X), playerById(2).tankTexture).setOrigin(0.5, 1).setFlipX(true).setDepth(7),
     };
     this.createBattleBlocks();
+    if (gameState.nightMode) this.add.rectangle(BATTLE_WORLD_WIDTH / 2, GAME_HEIGHT / 2, BATTLE_WORLD_WIDTH, GAME_HEIGHT, 0x09134c, 0.48).setDepth(14);
     this.aimGraphics = this.add.graphics().setDepth(15);
     this.createHud();
+    for (const child of this.children.list as unknown as Array<Phaser.GameObjects.GameObject & { depth: number; setScrollFactor(x: number, y?: number): unknown }>) {
+      if (child.depth >= 25) child.setScrollFactor(0);
+    }
     if (this.input.keyboard) {
       this.keys = this.input.keyboard.addKeys({
         one: Phaser.Input.Keyboard.KeyCodes.ONE,
@@ -154,17 +177,20 @@ export class BattleScene extends Phaser.Scene {
 
     // Movement is allowed only when no projectile is in flight and the impact
     // animation is not resolving. Only the player whose turn it is can move.
-    if (this.input.keyboard && this.keys && !this.activeProjectile && !this.resolving) {
+    if (this.input.keyboard && this.keys && !this.activeProjectile && !this.resolving && !this.isAiming) {
       this.updateTankMovement(delta / 1000);
     }
 
     this.tanks[1].y = this.terrainAt(this.tanks[1].x);
     this.tanks[2].y = this.terrainAt(this.tanks[2].x);
+    if (!this.activeProjectile && !this.resolving && !this.isAiming) {
+      this.cameras.main.scrollX = this.battleCameraScrollX();
+    }
     if (this.isAiming && this.aimPointerId !== null) {
       const pointer = this.input.pointer1.id === this.aimPointerId
         ? this.input.pointer1
         : this.input.activePointer;
-      this.updateDragAim(pointer.x, pointer.y);
+      this.updateDragAim(pointer.worldX, pointer.worldY);
       this.chargeBonus = Math.min(this.maxChargeBonus, this.chargeBonus + this.chargeRate * delta / 1000);
     }
 
@@ -189,8 +215,8 @@ export class BattleScene extends Phaser.Scene {
 
     // Clamp the tank to its own half of the battlefield and keep it fully on screen.
     const halfTankWidth = tank.displayWidth / 2;
-    const minX = id === 1 ? halfTankWidth : GAME_WIDTH / 2 + halfTankWidth;
-    const maxX = id === 1 ? GAME_WIDTH / 2 - halfTankWidth : GAME_WIDTH - halfTankWidth;
+    const minX = id === 1 ? halfTankWidth : BATTLE_WORLD_WIDTH / 2 + halfTankWidth;
+    const maxX = id === 1 ? BATTLE_WORLD_WIDTH / 2 - halfTankWidth : BATTLE_WORLD_WIDTH - halfTankWidth;
 
     // Cap large frame times so the tank does not jump after a brief tab switch.
     const safeDelta = Math.min(deltaSeconds, 0.05);
@@ -219,7 +245,7 @@ export class BattleScene extends Phaser.Scene {
 
   private createTerrain(): void {
     this.terrain = [];
-    for (let x = 0; x <= GAME_WIDTH; x += TERRAIN_STEP) this.terrain.push(baseTerrainY(x));
+    for (let x = 0; x <= BATTLE_WORLD_WIDTH; x += TERRAIN_STEP) this.terrain.push(baseTerrainY(x, BATTLE_WORLD_WIDTH));
     this.terrainGraphics = this.add.graphics().setDepth(2);
   }
 
@@ -234,20 +260,20 @@ export class BattleScene extends Phaser.Scene {
         const y = Math.min(GAME_HEIGHT, this.terrain[i] + offset);
         if (i === 0) g.moveTo(x, y); else g.lineTo(x, y);
       }
-      g.lineTo(GAME_WIDTH, GAME_HEIGHT);
+      g.lineTo(BATTLE_WORLD_WIDTH, GAME_HEIGHT);
       g.lineTo(0, GAME_HEIGHT);
       g.closePath();
       g.fillPath();
     };
-    drawLayer(0, 0x80502f);
-    g.lineStyle(7, 0x4c8030, 1);
+    drawLayer(0, 0x92572f);
+    g.lineStyle(7, 0x4c8a2d, 1);
     g.beginPath();
     for (let i = 0; i < this.terrain.length; i++) {
       const x = i * TERRAIN_STEP;
       if (i === 0) g.moveTo(x, this.terrain[i]); else g.lineTo(x, this.terrain[i]);
     }
     g.strokePath();
-    g.lineStyle(2, 0xb2d064, 0.9);
+    g.lineStyle(2, 0xc2eb61, 0.95);
     g.beginPath();
     for (let i = 0; i < this.terrain.length; i++) {
       const x = i * TERRAIN_STEP;
@@ -259,15 +285,16 @@ export class BattleScene extends Phaser.Scene {
   private drawArenaGrid(): void {
     const grid = this.add.graphics().setDepth(1);
     grid.lineStyle(1, 0xe6f5ff, 0.12);
-    for (let x = 0; x <= GAME_WIDTH; x += 40) grid.lineBetween(x, 0, x, GAME_HEIGHT);
-    for (let y = 0; y <= GAME_HEIGHT; y += 40) grid.lineBetween(0, y, GAME_WIDTH, y);
+    for (let x = 0; x <= BATTLE_WORLD_WIDTH; x += 40) grid.lineBetween(x, 0, x, GAME_HEIGHT);
+    for (let y = 0; y <= GAME_HEIGHT; y += 40) grid.lineBetween(0, y, BATTLE_WORLD_WIDTH, y);
   }
 
   private createBattleBlocks(): void {
     for (const id of [1, 2] as PlayerId[]) {
       for (const placed of playerById(id).structure) {
-        const x = BUILD_ORIGIN_X[id] + placed.col * TILE_SIZE + TILE_SIZE / 2;
-        const groundY = this.terrainAt(id === 1 ? 280 : 1320);
+        const offset = id === 1 ? BATTLE_P1_BUILD_OFFSET : BATTLE_P2_BUILD_OFFSET;
+        const x = BUILD_ORIGIN_X[id] + offset + placed.col * TILE_SIZE + TILE_SIZE / 2;
+        const groundY = this.terrainAt(id === 1 ? BATTLE_P1_X : BATTLE_P2_X);
         const y = groundY - (BUILD_ROWS - placed.row - 0.5) * TILE_SIZE;
         const image = addBlockImage(this, x, y, placed.type, { size: TILE_SIZE }).setDepth(6);
         this.blocks.push({ ownerId: id, col: placed.col, row: placed.row, type: placed.type, hp: BLOCK_HP[placed.type], image, x, y });
@@ -294,9 +321,9 @@ export class BattleScene extends Phaser.Scene {
     this.statusText = this.add.text(GAME_WIDTH / 2, 790, "", {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "15px", color: "#e9f5f8", stroke: "#121920", strokeThickness: 3,
     }).setOrigin(0.5).setDepth(27);
-    this.makeWeaponButton(570, "shell", "1  TANK SHOT", 0x344856);
-    this.makeWeaponButton(730, "missile", "2  MISSILE", 0x4b3b32);
-    this.makeWeaponButton(890, "boomerang", "3  BOOMERANG", 0x24464e);
+    this.makeWeaponButton(570, "shell", "TANK SHOT", 0x344856);
+    this.makeWeaponButton(730, "missile", "MISSILE", 0x4b3b32);
+    this.makeWeaponButton(890, "boomerang", "BOOMERANG", 0x24464e);
     this.add.rectangle(1140, 850, 174, 66, 0xa94432, 1).setStrokeStyle(3, 0xffc18b, 1).setDepth(26);
     this.add.text(1140, 850, "FIRE  •  SPACE", {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "19px", color: "#fff7eb", stroke: "#502218", strokeThickness: 4,
@@ -313,10 +340,23 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private makeWeaponButton(x: number, type: WeaponType, label: string, color: number): void {
-    this.add.rectangle(x, 850, 148, 64, color, 1).setStrokeStyle(2, 0xaec2cb, 0.9).setDepth(26);
-    this.add.text(x, 849, label, {
+    const glow = this.add.rectangle(x, 850, 160, 78, color, 0).setDepth(25);
+    const background = this.add.rectangle(x, 850, 148, 64, color, 1)
+      .setStrokeStyle(2, 0xaec2cb, 0.9).setDepth(26)
+      .setInteractive({ useHandCursor: true });
+    background.on("pointerdown", () => this.selectWeapon(type));
+    const chargedWeapon = type !== "shell";
+    const title = this.add.text(x, chargedWeapon ? 837 : 849, label, {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: type === "boomerang" ? "13px" : "15px", color: "#ffffff", stroke: "#10151a", strokeThickness: 4,
     }).setOrigin(0.5).setDepth(27);
+    const visual: WeaponButtonVisual = { background, glow, title };
+    if (chargedWeapon) {
+      visual.chargeText = this.add.text(x, 857, "0%", {
+        fontFamily: "Arial Black, Arial, sans-serif", fontSize: "12px", color: "#d5dce0", stroke: "#10151a", strokeThickness: 3,
+      }).setOrigin(0.5).setDepth(27);
+      visual.chargeBar = this.add.graphics().setDepth(27);
+    }
+    this.weaponButtons[type] = visual;
   }
 
   private handlePointerDown(pointer: Phaser.Input.Pointer): void {
@@ -338,17 +378,17 @@ export class BattleScene extends Phaser.Scene {
     // keep holding to add a small amount of extra cannon charge.
     this.isAiming = true;
     this.aimPointerId = pointer.id;
-    this.dragStartX = pointer.x;
-    this.dragStartY = pointer.y;
+    this.dragStartX = pointer.worldX;
+    this.dragStartY = pointer.worldY;
     this.chargeBonus = 0;
     this.dragPower = this.power;
-    this.updateDragAim(pointer.x, pointer.y);
+    this.updateDragAim(pointer.worldX, pointer.worldY);
   }
 
   private handlePointerUp(pointer: Phaser.Input.Pointer): void {
     if (!this.isAiming || (this.aimPointerId !== null && pointer.id !== this.aimPointerId)) return;
     if (!this.resolving && !this.activeProjectile) {
-      this.updateDragAim(pointer.x, pointer.y);
+      this.updateDragAim(pointer.worldX, pointer.worldY);
       const angle = this.currentAimAngle;
       const shotPower = this.effectivePower();
       this.cancelAim();
@@ -408,27 +448,44 @@ export class BattleScene extends Phaser.Scene {
       charge.missile = Phaser.Math.Linear(charge.missile, actual.missile, blend);
       charge.boomerang = Phaser.Math.Linear(charge.boomerang, actual.boomerang, blend);
     }
-    this.drawPlayerBars(20, 18, 350, p1.hp, p1.fuel, this.displayedCharge[1].missile, this.displayedCharge[1].boomerang, 0x42b6ff);
-    this.drawPlayerBars(1230, 18, 350, p2.hp, p2.fuel, this.displayedCharge[2].missile, this.displayedCharge[2].boomerang, 0xff6262);
-    this.p1Text.setText(`HP ${p1.hp}  •  FUEL ${Math.ceil(p1.fuel)}  •  HITS ${p1.hits}\nM ${Math.round(this.displayedCharge[1].missile)}%  •  B ${Math.round(this.displayedCharge[1].boomerang)}%`);
-    this.p2Text.setText(`HP ${p2.hp}  •  FUEL ${Math.ceil(p2.fuel)}  •  HITS ${p2.hits}\nM ${Math.round(this.displayedCharge[2].missile)}%  •  B ${Math.round(this.displayedCharge[2].boomerang)}%`);
+    this.drawPlayerBars(20, 18, 350, p1.hp, p1.fuel, 0x42b6ff);
+    this.drawPlayerBars(1230, 18, 350, p2.hp, p2.fuel, 0xff6262);
+    this.p1Text.setText(`HP ${p1.hp}  •  FUEL ${Math.ceil(p1.fuel)}  •  HITS ${p1.hits}`);
+    this.p2Text.setText(`HP ${p2.hp}  •  FUEL ${Math.ceil(p2.fuel)}  •  HITS ${p2.hits}`);
     this.turnText.setText(`BATTLE PHASE  •  P${gameState.currentPlayer} TURN`);
     this.statusText.setText(this.fireMessage);
     const weaponButtons: Array<[number, WeaponType]> = [[570, "shell"], [730, "missile"], [890, "boomerang"]];
     for (const [x, type] of weaponButtons) {
       const selected = gameState.selectedWeapon === type;
-      this.hudGraphics.lineStyle(selected ? 4 : 1, selected ? 0x51dcff : 0x5d6469, selected ? 1 : 0.65);
+      const visual = this.weaponButtons[type];
+      const charge = type === "shell" ? 100 : this.displayedCharge[gameState.currentPlayer][type];
+      const ready = charge >= 100;
+      const dimAlpha = type === "shell" || ready ? 1 : 0.48;
+      visual?.background.setAlpha(dimAlpha).setStrokeStyle(ready && type !== "shell" ? 3 : 2,
+        ready && type !== "shell" ? WEAPONS[type].color : 0xaec2cb,
+        ready && type !== "shell" ? 1 : 0.7);
+      visual?.title.setAlpha(dimAlpha);
+      visual?.chargeText?.setAlpha(dimAlpha).setText(ready ? "READY" : `${Math.round(charge)}%`);
+      visual?.glow.setAlpha(ready && type !== "shell" ? 0.16 + Math.sin(this.time.now / 130) * 0.07 : 0);
+      if (visual?.chargeBar) {
+        visual.chargeBar.clear();
+        visual.chargeBar.fillStyle(0x05080b, 0.95).fillRoundedRect(x - 58, 869, 116, 6, 3);
+        if (charge > 0) visual.chargeBar.fillStyle(ready ? WEAPONS[type].color : 0x76828a, 1)
+          .fillRoundedRect(x - 56, 871, 112 * clamp(charge / 100, 0, 1), 2, 1);
+      }
+      const selectedIsAvailable = selected && (type === "shell" || ready);
+      this.hudGraphics.lineStyle(selectedIsAvailable ? 4 : 1,
+        selectedIsAvailable ? 0x51dcff : 0x5d6469,
+        selectedIsAvailable ? 1 : 0.45);
       this.hudGraphics.strokeRoundedRect(x - 76, 817, 152, 66, 5);
     }
   }
 
-  private drawPlayerBars(x: number, y: number, width: number, hp: number, fuel: number, missile: number, boomerang: number, accent: number): void {
+  private drawPlayerBars(x: number, y: number, width: number, hp: number, fuel: number, accent: number): void {
     this.hudGraphics.fillStyle(0x13222c, 0.94).fillRoundedRect(x, y, width, 158, 8);
     this.hudGraphics.lineStyle(2, accent, 0.95).strokeRoundedRect(x, y, width, 158, 8);
     this.drawBar(x + 18, y + 84, width - 36, 8, hp / MAX_HP, 0x62df82);
     this.drawBar(x + 18, y + 102, width - 36, 7, fuel / 100, 0xffc456);
-    this.drawBar(x + 18, y + 119, width - 36, 7, missile / 100, 0x58d8ff);
-    this.drawBar(x + 18, y + 136, width - 36, 7, boomerang / 100, 0xc282ff);
   }
 
   private drawBar(x: number, y: number, w: number, h: number, ratio: number, color: number): void {
@@ -449,7 +506,7 @@ export class BattleScene extends Phaser.Scene {
     const pointer = this.input.activePointer;
     const id = gameState.currentPlayer;
     const origin = this.muzzlePosition(id);
-    const angle = this.aimAngle(id, pointer.x, pointer.y);
+    const angle = this.aimAngle(id, pointer.worldX, pointer.worldY);
     this.drawTrajectory(origin.x, origin.y, angle, this.power, 0xffe7a5, 0.38);
   }
 
@@ -462,11 +519,11 @@ export class BattleScene extends Phaser.Scene {
     // Show the pull-back vector and a small charge indicator near the pointer.
     const pointer = this.input.activePointer;
     this.aimGraphics.lineStyle(2, 0xffffff, 0.45);
-    this.aimGraphics.lineBetween(pointer.x, pointer.y, origin.x, origin.y);
+    this.aimGraphics.lineBetween(pointer.worldX, pointer.worldY, origin.x, origin.y);
     const ratio = clamp(this.chargeBonus / this.maxChargeBonus, 0, 1);
-    this.aimGraphics.fillStyle(0x14202a, 0.9).fillRoundedRect(pointer.x - 34, pointer.y - 28, 68, 9, 4);
+    this.aimGraphics.fillStyle(0x14202a, 0.9).fillRoundedRect(pointer.worldX - 34, pointer.worldY - 28, 68, 9, 4);
     this.aimGraphics.fillStyle(ratio >= 0.8 ? 0xffb13b : 0x64e6ff, 1)
-      .fillRoundedRect(pointer.x - 32, pointer.y - 26, 64 * ratio, 5, 3);
+      .fillRoundedRect(pointer.worldX - 32, pointer.worldY - 26, 64 * ratio, 5, 3);
   }
 
   private drawTrajectory(
@@ -511,7 +568,7 @@ export class BattleScene extends Phaser.Scene {
       x = nextX;
       y = nextY;
 
-      if (x < 0 || x > GAME_WIDTH || (!returning && (y > this.terrainAt(clamp(x, 0, GAME_WIDTH)) || y > GAME_HEIGHT - 4))) break;
+      if (x < 0 || x > BATTLE_WORLD_WIDTH || (!returning && (y > this.terrainAt(clamp(x, 0, BATTLE_WORLD_WIDTH)) || y > GAME_HEIGHT - 4))) break;
 
       const hitsBlock = this.blocks.some((block) =>
         Math.abs(x - block.x) <= TILE_SIZE * 0.46 && Math.abs(y - block.y) <= TILE_SIZE * 0.46
@@ -535,15 +592,17 @@ export class BattleScene extends Phaser.Scene {
     }
     if (weaponType !== "shell") player.charge[weaponType] -= 100;
     const pointer = this.input.activePointer;
-    const aimX = pointerX ?? pointer.x;
-    const aimY = pointerY ?? pointer.y;
+    const aimX = pointerX ?? pointer.worldX;
+    const aimY = pointerY ?? pointer.worldY;
     const origin = this.muzzlePosition(ownerId);
     const angle = angleOverride ?? this.aimAngle(ownerId, aimX, aimY);
     const spec = WEAPONS[weaponType];
     const speed = spec.speed * clamp(powerOverride ?? this.power, 0.5, 1.5);
     const dir = ownerId === 1 ? 1 : -1;
-    const projectileImage = this.add.circle(origin.x, origin.y, weaponType === "missile" ? 8 : 5, spec.color, 1)
-      .setStrokeStyle(2, weaponType === "missile" ? 0x7b3016 : 0x18232b, 1).setDepth(16);
+    const projectileImage = this.add.image(origin.x, origin.y, `projectile-${weaponType}`)
+      .setScale(0.55).setDepth(16);
+    projectileImage.setRotation(angle);
+    this.tweens.add({ targets: projectileImage, scale: 1.15, duration: 240, ease: "Cubic.easeOut" });
     this.activeProjectile = {
       x: origin.x,
       y: origin.y,
@@ -557,8 +616,11 @@ export class BattleScene extends Phaser.Scene {
       gravity: spec.gravity,
       returning: false,
       image: projectileImage,
+      trailClock: 0,
     };
     player.shotsFired += 1;
+    this.tweens.killTweensOf(this.cameras.main);
+    this.cameras.main.startFollow(projectileImage, true, 0.13, 0.13);
     this.chargeBonus = 0;
     // Firing is free: fuel decreases only when the tank moves.
     this.fireMessage = `P${ownerId} fired ${spec.label.toLowerCase()} at ${Math.round(clamp(powerOverride ?? this.power, 0.5, 1.5) * 100)}% power — wait for impact.`;
@@ -569,6 +631,7 @@ export class BattleScene extends Phaser.Scene {
     const projectile = this.activeProjectile;
     if (!projectile) return;
     projectile.age += deltaSeconds;
+    projectile.trailClock += deltaSeconds;
     const enemyId = otherPlayerId(projectile.ownerId);
     const enemyX = this.tanks[enemyId].x;
     const enemyGround = this.terrainAt(enemyX);
@@ -605,6 +668,12 @@ export class BattleScene extends Phaser.Scene {
       projectile.vy += projectile.gravity * deltaSeconds;
     }
     projectile.image.setPosition(projectile.x, projectile.y);
+    const travelAngle = Math.atan2(projectile.vy, projectile.vx);
+    projectile.image.setRotation(travelAngle + (projectile.weapon === "boomerang" ? projectile.age * 7 : 0));
+    while (projectile.trailClock >= 0.024) {
+      projectile.trailClock -= 0.024;
+      this.emitProjectileTrail(projectile);
+    }
 
     // A wall collision takes priority over the terrain check, allowing blocks to shield tanks.
     const hitBlock = this.blocks.find((block) =>
@@ -619,14 +688,43 @@ export class BattleScene extends Phaser.Scene {
       this.resolveImpact(projectile.x, projectile.y, projectile, enemyId);
       return;
     }
-    const groundY = this.terrainAt(clamp(projectile.x, 0, GAME_WIDTH));
+    const groundY = this.terrainAt(clamp(projectile.x, 0, BATTLE_WORLD_WIDTH));
     if (projectile.y >= groundY) {
       this.resolveImpact(projectile.x, groundY, projectile, null);
       return;
     }
-    if (projectile.x < -20 || projectile.x > GAME_WIDTH + 20 || projectile.y > GAME_HEIGHT + 10 || projectile.age > 5.5) {
+    if (projectile.x < -20 || projectile.x > BATTLE_WORLD_WIDTH + 20 || projectile.y > GAME_HEIGHT + 10 || projectile.age > 5.5) {
       this.resolveMiss(projectile);
     }
+  }
+
+  private emitProjectileTrail(projectile: ProjectileState): void {
+    const length = Math.max(1, Math.hypot(projectile.vx, projectile.vy));
+    const backX = -projectile.vx / length;
+    const backY = -projectile.vy / length;
+    const isFire = projectile.weapon !== "boomerang";
+    const color = projectile.weapon === "boomerang"
+      ? (Math.random() > 0.5 ? 0x82f6ff : 0x5a9cff)
+      : (Math.random() > 0.42 ? 0xffb21f : 0xff6926);
+    const size = projectile.weapon === "missile" ? Phaser.Math.Between(4, 9) : Phaser.Math.Between(3, 6);
+    const particle = this.add.circle(
+      projectile.x + backX * 18 + Phaser.Math.Between(-3, 3),
+      projectile.y + backY * 18 + Phaser.Math.Between(-3, 3),
+      size,
+      color,
+      isFire ? 0.94 : 0.82,
+    ).setDepth(17);
+    if (isFire && Math.random() > 0.5) particle.setStrokeStyle(2, 0xffed75, 0.8);
+    this.tweens.add({
+      targets: particle,
+      x: particle.x + backX * Phaser.Math.Between(22, 42),
+      y: particle.y + backY * 18 + Phaser.Math.Between(-11, 11),
+      alpha: 0,
+      scale: 0.12,
+      duration: projectile.weapon === "missile" ? 330 : 220,
+      ease: "Cubic.easeOut",
+      onComplete: () => particle.destroy(),
+    });
   }
 
   private resolveImpact(x: number, y: number, projectile: ProjectileState, directTank: PlayerId | null): void {
@@ -684,12 +782,13 @@ export class BattleScene extends Phaser.Scene {
     }
 
     this.showExplosion(x, y, projectile.radius, WEAPONS[projectile.weapon].color);
+    this.cameras.main.shake(240, directTank ? 0.012 : 0.008);
     projectile.image.destroy();
     this.activeProjectile = null;
+    this.cameras.main.stopFollow();
     this.updateHud();
 
     this.time.delayedCall(420, () => {
-      this.resolving = false;
       const p1 = playerById(1);
       const p2 = playerById(2);
       if (p1.hp <= 0 || p2.hp <= 0) {
@@ -697,10 +796,13 @@ export class BattleScene extends Phaser.Scene {
         this.scene.start("ResultScene");
         return;
       }
-      gameState.currentPlayer = otherPlayerId(projectile.ownerId);
-      gameState.round += 1;
-      this.fireMessage = `P${gameState.currentPlayer} turn — ${this.weaponStatusText()}`;
-      this.updateHud();
+      this.returnCameraToStart(() => {
+        gameState.currentPlayer = otherPlayerId(projectile.ownerId);
+        gameState.round += 1;
+        this.resolving = false;
+        this.fireMessage = `P${gameState.currentPlayer} turn — ${this.weaponStatusText()}`;
+        this.updateHud();
+      });
     });
   }
 
@@ -709,13 +811,16 @@ export class BattleScene extends Phaser.Scene {
     this.resolving = true;
     projectile.image.destroy();
     this.activeProjectile = null;
+    this.cameras.main.stopFollow();
     this.fireMessage = "Miss! The next tank gets its turn.";
     this.updateHud();
     this.time.delayedCall(250, () => {
-      gameState.currentPlayer = otherPlayerId(projectile.ownerId);
-      gameState.round += 1;
-      this.resolving = false;
-      this.updateHud();
+      this.returnCameraToStart(() => {
+        gameState.currentPlayer = otherPlayerId(projectile.ownerId);
+        gameState.round += 1;
+        this.resolving = false;
+        this.updateHud();
+      });
     });
   }
 
@@ -766,6 +871,23 @@ export class BattleScene extends Phaser.Scene {
         onComplete: () => particle.destroy(),
       });
     }
+  }
+
+  private returnCameraToStart(onComplete?: () => void): void {
+    const camera = this.cameras.main;
+    camera.stopFollow();
+    this.tweens.add({
+      targets: camera,
+      scrollX: this.battleCameraScrollX(),
+      duration: 320,
+      ease: "Sine.easeInOut",
+      onComplete,
+    });
+  }
+
+  private battleCameraScrollX(): number {
+    const tanksCenter = (this.tanks[1].x + this.tanks[2].x) / 2;
+    return clamp(tanksCenter - GAME_WIDTH / 2, 0, BATTLE_WORLD_WIDTH - GAME_WIDTH);
   }
 
   private muzzlePosition(id: PlayerId): { x: number; y: number } {

@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { GAME_HEIGHT, GAME_WIDTH, drawSky } from "../grid";
-import { resetGameState } from "../state";
+import { playerById } from "../state";
 
 export class MenuScene extends Phaser.Scene {
   constructor() {
@@ -23,9 +23,8 @@ export class MenuScene extends Phaser.Scene {
       stroke: "#352215", strokeThickness: 5,
     }).setOrigin(0.5).setDepth(3);
 
-    this.makeButton(GAME_WIDTH / 2, 465, 360, 78, "START LOCAL DUEL", () => {
-      resetGameState();
-      this.scene.start("MineScene");
+    this.makeButton(GAME_WIDTH / 2, 465, 360, 78, "CHOOSE YOUR TANK", () => {
+      this.scene.start("TankHangarScene");
     }, 0x4d942e);
 
     this.add.text(GAME_WIDTH / 2, 555,
@@ -54,7 +53,7 @@ export class MenuScene extends Phaser.Scene {
 
   private drawMenuGround(): void {
     const g = this.add.graphics();
-    g.fillStyle(0x5f7c3b, 1);
+    g.fillStyle(0x548d39, 1);
     g.fillPoints([
       new Phaser.Geom.Point(0, 660), new Phaser.Geom.Point(180, 625),
       new Phaser.Geom.Point(360, 650), new Phaser.Geom.Point(540, 600),
@@ -63,15 +62,15 @@ export class MenuScene extends Phaser.Scene {
       new Phaser.Geom.Point(1600, 650), new Phaser.Geom.Point(1600, 900),
       new Phaser.Geom.Point(0, 900),
     ], true);
-    g.fillStyle(0x67442e, 1);
+    g.fillStyle(0x88502e, 1);
     g.fillRect(0, 685, GAME_WIDTH, GAME_HEIGHT - 685);
-    g.lineStyle(9, 0x82b94c, 1);
+    g.lineStyle(9, 0x9be04e, 1);
     g.beginPath();
     g.moveTo(0, 660); g.lineTo(180, 625); g.lineTo(360, 650); g.lineTo(540, 600);
     g.lineTo(760, 665); g.lineTo(980, 635); g.lineTo(1180, 660); g.lineTo(1390, 610); g.lineTo(1600, 650);
     g.strokePath();
-    this.add.image(260, 654, "tank-blue").setOrigin(0.5, 1).setScale(1.3);
-    this.add.image(1340, 645, "tank-red").setOrigin(0.5, 1).setScale(1.3);
+    this.add.image(260, 654, playerById(1).tankTexture).setOrigin(0.5, 1).setScale(1.3);
+    this.add.image(1340, 645, playerById(2).tankTexture).setOrigin(0.5, 1).setFlipX(true).setScale(1.3);
   }
 
   private makeButton(x: number, y: number, w: number, h: number, label: string, callback: () => void, color: number): void {

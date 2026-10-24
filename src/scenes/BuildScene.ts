@@ -43,8 +43,9 @@ export class BuildScene extends Phaser.Scene {
     drawSky(this);
     this.drawGround();
     this.drawBuildGrids();
-    this.add.image(280, 590, "tank-blue").setOrigin(0.5, 1).setDepth(6);
-    this.add.image(1320, 590, "tank-red").setOrigin(0.5, 1).setDepth(6);
+    this.add.image(280, 590, playerById(1).tankTexture).setOrigin(0.5, 1).setDepth(6);
+    this.add.image(1320, 590, playerById(2).tankTexture).setOrigin(0.5, 1).setFlipX(true).setDepth(6);
+    if (gameState.nightMode) this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x0a1550, 0.42).setDepth(14);
     this.createHud();
     this.renderExistingBlocks();
 
@@ -82,7 +83,7 @@ export class BuildScene extends Phaser.Scene {
 
   private drawGround(): void {
     const g = this.add.graphics().setDepth(1);
-    g.fillStyle(0x80502f, 1);
+    g.fillStyle(0x92572f, 1);
     g.fillPoints([
       new Phaser.Geom.Point(0, 590), new Phaser.Geom.Point(140, 567),
       new Phaser.Geom.Point(320, 590), new Phaser.Geom.Point(470, 575),
@@ -92,7 +93,7 @@ export class BuildScene extends Phaser.Scene {
       new Phaser.Geom.Point(1600, 590), new Phaser.Geom.Point(1600, 900),
       new Phaser.Geom.Point(0, 900),
     ], true);
-    g.fillStyle(0x4b7d31, 1);
+    g.fillStyle(0x4f8d32, 1);
     g.fillPoints([
       new Phaser.Geom.Point(0, 590), new Phaser.Geom.Point(140, 567),
       new Phaser.Geom.Point(320, 590), new Phaser.Geom.Point(470, 575),
@@ -106,7 +107,7 @@ export class BuildScene extends Phaser.Scene {
       new Phaser.Geom.Point(470, 591), new Phaser.Geom.Point(320, 606),
       new Phaser.Geom.Point(140, 583), new Phaser.Geom.Point(0, 606),
     ], true);
-    g.lineStyle(3, 0x9fc95b, 0.85);
+    g.lineStyle(3, 0xb5e65a, 0.95);
     g.beginPath();
     g.moveTo(0, 590); g.lineTo(140, 567); g.lineTo(320, 590); g.lineTo(470, 575);
     g.lineTo(640, 625); g.lineTo(800, 670); g.lineTo(960, 630); g.lineTo(1120, 580);
