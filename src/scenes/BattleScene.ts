@@ -6,6 +6,9 @@ import {
 import { gameState, otherPlayerId, playerById, type PlayerId, type TileType, type WeaponType } from "../state";
 
 const TERRAIN_STEP = 8;
+// Tank movement settings. Fuel is charged by actual distance moved.
+const TANK_MOVE_SPEED = 190; // pixels per second
+const TANK_FUEL_PER_PIXEL = 0.04; // 4 fuel per 100 pixels
 const WEAPONS: Record<WeaponType, { label: string; damage: number; radius: number; speed: number; gravity: number; color: number }> = {
   shell: { label: "TANK SHOT", damage: 1, radius: 23, speed: 660, gravity: 520, color: 0xffefb0 },
   missile: { label: "MISSILE", damage: 10, radius: 72, speed: 520, gravity: 390, color: 0xff9a38 },
@@ -62,6 +65,10 @@ export class BattleScene extends Phaser.Scene {
     up: Phaser.Input.Keyboard.Key;
     down: Phaser.Input.Keyboard.Key;
     space: Phaser.Input.Keyboard.Key;
+    p1Left: Phaser.Input.Keyboard.Key;
+    p1Right: Phaser.Input.Keyboard.Key;
+    p2Left: Phaser.Input.Keyboard.Key;
+    p2Right: Phaser.Input.Keyboard.Key;
   };
   private resolving = false;
 
@@ -90,6 +97,11 @@ export class BattleScene extends Phaser.Scene {
         up: Phaser.Input.Keyboard.KeyCodes.UP,
         down: Phaser.Input.Keyboard.KeyCodes.DOWN,
         space: Phaser.Input.Keyboard.KeyCodes.SPACE,
+        // Player 1 moves with A/D; Player 2 moves with Left/Right.
+        p1Left: Phaser.Input.Keyboard.KeyCodes.A,
+        p1Right: Phaser.Input.Keyboard.KeyCodes.D,
+        p2Left: Phaser.Input.Keyboard.KeyCodes.LEFT,
+        p2Right: Phaser.Input.Keyboard.KeyCodes.RIGHT,
       }) as typeof this.keys;
     }
     this.input.on("pointerdown", this.handlePointerDown, this);
@@ -106,6 +118,12 @@ export class BattleScene extends Phaser.Scene {
       if (Phaser.Input.Keyboard.JustDown(this.keys.space)) this.fireWeapon();
     }
 
+    // Movement is allowed only when no projectile is in flight and the impact
+    // animation is not resolving. Only the player whose turn it is can move.
+    if (this.input.keyboard && this.keys && !this.activeProjectile && !this.resolving) {
+      this.updateTankMovement(delta / 1000);
+    }
+
     this.tanks[1].y = this.terrainAt(this.tanks[1].x);
     this.tanks[2].y = this.terrainAt(this.tanks[2].x);
     if (this.activeProjectile) this.updateProjectile(delta / 1000);
@@ -113,6 +131,46 @@ export class BattleScene extends Phaser.Scene {
     this.timerText.setText(`ROUND ${gameState.round}`);
     this.powerText.setText(`POWER  ${Math.round(this.power * 100)}%`);
     this.weaponText.setText(this.weaponStatusText());
+  }
+
+  private updateTankMovement(deltaSeconds: number): void {
+    const id = gameState.currentPlayer;
+    const player = playerById(id);
+    const tank = this.tanks[id];
+
+    const movingLeft = id === 1 ? this.keys.p1Left.isDown : this.keys.p2Left.isDown;
+    const movingRight = id === 1 ? this.keys.p1Right.isDown : this.keys.p2Right.isDown;
+    const direction = Number(movingRight) - Number(movingLeft);
+    if (direction === 0 || player.fuel <= 0) return;
+
+    // Clamp the tank to its own half of the battlefield and keep it fully on screen.
+    const halfTankWidth = tank.displayWidth / 2;
+    const minX = id === 1 ? halfTankWidth : GAME_WIDTH / 2 + halfTankWidth;
+    const maxX = id === 1 ? GAME_WIDTH / 2 - halfTankWidth : GAME_WIDTH - halfTankWidth;
+
+    // Cap large frame times so the tank does not jump after a brief tab switch.
+    const safeDelta = Math.min(deltaSeconds, 0.05);
+    const requestedX = tank.x + direction * TANK_MOVE_SPEED * safeDelta;
+    let nextX = clamp(requestedX, minX, maxX);
+    let distanceMoved = nextX - tank.x;
+
+    // Do not let the final movement step spend more fuel than the player has.
+    const maxDistanceFromFuel = player.fuel / TANK_FUEL_PER_PIXEL;
+    if (Math.abs(distanceMoved) > maxDistanceFromFuel) {
+      distanceMoved = Math.sign(distanceMoved) * maxDistanceFromFuel;
+      nextX = tank.x + distanceMoved;
+    }
+    if (Math.abs(distanceMoved) < 0.001) return;
+
+    const fuelShownBefore = Math.ceil(player.fuel);
+    tank.x = nextX;
+    player.fuel = Math.max(0, player.fuel - Math.abs(distanceMoved) * TANK_FUEL_PER_PIXEL);
+
+    // Refresh the fuel bar and label once per whole fuel unit, not on every frame.
+    if (Math.ceil(player.fuel) !== fuelShownBefore) {
+      this.fireMessage = `P${id} moving — ${Math.ceil(player.fuel)} fuel remaining.`;
+      this.updateHud();
+    }
   }
 
   private createTerrain(): void {
@@ -205,7 +263,7 @@ export class BattleScene extends Phaser.Scene {
     this.weaponText = this.add.text(1380, 815, "TANK SHOT", {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "15px", color: "#f4f4ee", stroke: "#1e2020", strokeThickness: 4,
     }).setOrigin(0.5).setDepth(27);
-    this.add.text(GAME_WIDTH / 2, 894, "Aim with mouse • Click / Space to fire • ↑/↓ power • 1/2/3 weapon", {
+    this.add.text(GAME_WIDTH / 2, 894, "Move P1: A/D • Move P2: ←/→ • Aim with mouse • Click / Space to fire • ↑/↓ power • 1/2/3 weapon", {
       fontFamily: "Arial", fontSize: "15px", color: "#d6e0e5", stroke: "#111820", strokeThickness: 3,
     }).setOrigin(0.5).setDepth(27);
   }
@@ -248,8 +306,8 @@ export class BattleScene extends Phaser.Scene {
     const p2 = playerById(2);
     this.drawPlayerBars(20, 18, 305, p1.hp, p1.fuel, 0x2b92e8);
     this.drawPlayerBars(1275, 18, 305, p2.hp, p2.fuel, 0xe54848);
-    this.p1Text.setText(`HP ${p1.hp}   Fuel ${p1.fuel}   M ${p1.charge.missile}%  B ${p1.charge.boomerang}%`);
-    this.p2Text.setText(`HP ${p2.hp}   Fuel ${p2.fuel}   M ${p2.charge.missile}%  B ${p2.charge.boomerang}%`);
+    this.p1Text.setText(`HP ${p1.hp}   Fuel ${Math.ceil(p1.fuel)}   M ${p1.charge.missile}%  B ${p1.charge.boomerang}%`);
+    this.p2Text.setText(`HP ${p2.hp}   Fuel ${Math.ceil(p2.fuel)}   M ${p2.charge.missile}%  B ${p2.charge.boomerang}%`);
     this.turnText.setText(`P${gameState.currentPlayer} TURN`);
     this.statusText.setText(this.fireMessage);
     const weaponButtons: Array<[number, WeaponType]> = [[650, "shell"], [810, "missile"], [970, "boomerang"]];
@@ -338,7 +396,7 @@ export class BattleScene extends Phaser.Scene {
       image: projectileImage,
     };
     player.shotsFired += 1;
-    player.fuel = Math.max(0, player.fuel - 2);
+    // Firing is free: fuel decreases only when the tank moves.
     this.fireMessage = `P${ownerId} fired ${spec.label.toLowerCase()} — wait for impact.`;
     this.updateHud();
   }
