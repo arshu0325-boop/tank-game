@@ -1,145 +1,123 @@
  import Phaser from 'phaser';
-import { TILE_SIZE, GRID_W, GRID_H, TILES, PHASE_TIME } from './config';
+import { TILE_SIZE, GRID_W, TILES, PHASE_TIME } from './config';
 import { game, type TileType } from './state';
-import { setupMatch, drawGrid, surface, getTile, setTile } from './Grid';
+import { setupMatch, drawWorld, getTile, setTile, ZONE_X, ZONE_W, ZONE_H, PAD_ROW } from './Grid';
 
-type Keys = Record<'left' | 'right' | 'down' | 'front', Phaser.Input.Keyboard.Key>;
+type Keys = Record<'up' | 'down' | 'left' | 'right' | 'drill', Phaser.Input.Keyboard.Key>;
 
-interface Drill { x: number; y: number; progress: number }
+const COLORS: Record<TileType, number> = { dirt: 0x8b5a2b, stone: 0x888888, obsidian: 0x3b1f5c };
 
 export class MineScene extends Phaser.Scene {
-  private tanks: Phaser.GameObjects.Image[] = [];
-  private py: number[] = [];                 // tank row for each player
-  private facing: number[] = [1, -1];        // 1 = right, -1 = left
-  private drill: (Drill | null)[] = [null, null];
+  private cursor = [{ cx: 2, cy: 0 }, { cx: 2, cy: 0 }];   // position inside each zone
+  private progress = [0, 0];
   private keys: Keys[] = [];
-  private cracks!: Phaser.GameObjects.Graphics;
-  private hud!: Phaser.GameObjects.Text;
+  private fx!: Phaser.GameObjects.Graphics;
+  private hud!: Phaser.GameObjects.Text[];
+  private timerText!: Phaser.GameObjects.Text;
   private timeLeft = PHASE_TIME.mine;
 
   constructor() { super('Mine'); }
 
   create() {
-    // temporary colored squares until C's Preload scene exists
-    const colors: Record<string, number> = {
-      dirt: 0x8b5a2b, stone: 0x888888, obsidian: 0x3b1f5c, tank: 0x44aa44,
-    };
-    for (const key in colors) {
-      if (this.textures.exists(key)) continue;
-      const g = this.add.graphics();
-      g.fillStyle(colors[key]).fillRect(0, 0, 64, 64)
-       .lineStyle(2, 0x000000).strokeRect(0, 0, 64, 64);
-      g.generateTexture(key, 64, 64);
-      g.destroy();
-    }
-
     setupMatch();
-    drawGrid(this);
+    drawWorld(this);
 
-    this.tanks = [];
-    this.py = [];
-    this.drill = [null, null];
+    this.cursor = [{ cx: 2, cy: 0 }, { cx: 2, cy: 0 }];
+    this.progress = [0, 0];
     this.timeLeft = PHASE_TIME.mine;
+    this.fx = this.add.graphics().setDepth(5);
 
-    game.players.forEach((p, i) => {
-      this.py[i] = surface[p.x] - 1;
-      this.tanks[i] = this.add.image(0, 0, 'tank').setOrigin(0);
-      this.place(i);
-    });
+    const W = GRID_W * TILE_SIZE;
+    this.timerText = this.add.text(W / 2, 14, '', {
+      fontSize: '28px', fontStyle: 'bold', color: '#ffffff',
+      backgroundColor: '#c9792a', padding: { x: 16, y: 6 },
+    }).setOrigin(0.5, 0).setDepth(10);
 
-    this.cracks = this.add.graphics();
-    this.hud = this.add.text(10, 8, '', { fontSize: '20px', color: '#ffffff' }).setDepth(10);
+    const style = { fontSize: '20px', color: '#ffffff', backgroundColor: 'rgba(0,0,0,0.5)', padding: { x: 8, y: 4 } };
+    this.hud = [
+      this.add.text(10, 10, '', style).setDepth(10),
+      this.add.text(W - 10, 10, '', style).setOrigin(1, 0).setDepth(10),
+    ];
+    this.add.text(W / 2, 680, 'P1: WASD move cursor, hold F to drill     P2: Arrows move cursor, hold Enter to drill', {
+      fontSize: '16px', color: '#ffffff', backgroundColor: 'rgba(0,0,0,0.5)', padding: { x: 8, y: 4 },
+    }).setOrigin(0.5, 0).setDepth(10);
 
     const kb = this.input.keyboard!;
     this.keys = [
-      kb.addKeys({ left: 'A', right: 'D', down: 'S', front: 'F' }) as Keys,
-      kb.addKeys({ left: 'LEFT', right: 'RIGHT', down: 'DOWN', front: 'ENTER' }) as Keys,
+      kb.addKeys({ up: 'W', down: 'S', left: 'A', right: 'D', drill: 'F' }) as Keys,
+      kb.addKeys({ up: 'UP', down: 'DOWN', left: 'LEFT', right: 'RIGHT', drill: 'ENTER' }) as Keys,
     ];
   }
 
   update(_time: number, delta: number) {
     const dt = delta / 1000;
+    this.timeLeft = Math.max(0, this.timeLeft - dt);
+    this.timerText.setText(`MINE PHASE  0:${String(Math.ceil(this.timeLeft)).padStart(2, '0')}`);
 
-    this.timeLeft -= dt;
     if (this.timeLeft <= 0) {
-      this.timeLeft = 0;
       if (this.scene.manager.keys['Build']) this.scene.start('Build');
+      return;
     }
 
-    this.cracks.clear();
-    game.players.forEach((_p, i) => {
-      this.handleMove(i);
-      this.handleDrill(i, dt);
-    });
-
-    const inv = (i: number) => {
+    this.fx.clear();
+    for (const i of [0, 1]) {
+      this.moveCursor(i);
+      this.drill(i, dt);
       const v = game.players[i].inventory;
-      return `D${v.dirt} S${v.stone} O${v.obsidian}`;
-    };
-    this.hud.setText(
-      `P1 ${inv(0)}   |   Mine: ${Math.ceil(this.timeLeft)}s   |   P2 ${inv(1)}`
-    );
-  }
-
-  private place(i: number) {
-    this.tanks[i].setPosition(game.players[i].x * TILE_SIZE, this.py[i] * TILE_SIZE);
-  }
-
-  private fall(i: number) {
-    const x = game.players[i].x;
-    while (this.py[i] + 1 < GRID_H && !getTile(x, this.py[i] + 1)) this.py[i]++;
-  }
-
-  private handleMove(i: number) {
-    const k = this.keys[i];
-    const dir = Phaser.Input.Keyboard.JustDown(k.left) ? -1
-              : Phaser.Input.Keyboard.JustDown(k.right) ? 1 : 0;
-    if (!dir) return;
-
-    this.facing[i] = dir;
-    const p = game.players[i];
-    const nx = p.x + dir;
-    const y = this.py[i];
-    if (nx < 0 || nx >= GRID_W) return;
-
-    if (getTile(nx, y)) {
-      // blocked: can step up one tile if there is room
-      if (getTile(nx, y - 1) || getTile(p.x, y - 1) || y - 1 < 0) return;
-      this.py[i]--;
+      this.hud[i].setText(`P${i + 1}   Dirt ${v.dirt}   Stone ${v.stone}   Obsidian ${v.obsidian}`);
     }
-    p.x = nx;
-    this.fall(i);
-    this.drill[i] = null;
-    this.place(i);
   }
 
-  private handleDrill(i: number, dt: number) {
+  private moveCursor(i: number) {
     const k = this.keys[i];
-    const p = game.players[i];
-    let tx = -1, ty = -1;
+    const c = this.cursor[i];
+    const J = Phaser.Input.Keyboard.JustDown;
+    let moved = false;
+    if (J(k.left))  { c.cx--; moved = true; }
+    if (J(k.right)) { c.cx++; moved = true; }
+    if (J(k.up))    { c.cy--; moved = true; }
+    if (J(k.down))  { c.cy++; moved = true; }
+    c.cx = Phaser.Math.Clamp(c.cx, 0, ZONE_W - 1);
+    c.cy = Phaser.Math.Clamp(c.cy, 0, ZONE_H - 1);
+    if (moved) this.progress[i] = 0;
+  }
 
-    if (k.down.isDown) { tx = p.x; ty = this.py[i] + 1; }
-    else if (k.front.isDown) { tx = p.x + this.facing[i]; ty = this.py[i]; }
+  private drill(i: number, dt: number) {
+    const c = this.cursor[i];
+    const gx = ZONE_X[i] + c.cx;
+    const gy = PAD_ROW + c.cy;
+    const px = gx * TILE_SIZE;
+    const py = gy * TILE_SIZE;
 
-    const t = tx >= 0 ? getTile(tx, ty) : null;
-    if (!t) { this.drill[i] = null; return; }
+    this.fx.lineStyle(4, i === 0 ? 0x66ccff : 0xff6666)
+      .strokeRect(px + 2, py + 2, TILE_SIZE - 4, TILE_SIZE - 4);
 
-    let d = this.drill[i];
-    if (!d || d.x !== tx || d.y !== ty) d = this.drill[i] = { x: tx, y: ty, progress: 0 };
+    const tile = getTile(gx, gy);
+    if (!tile || !this.keys[i].drill.isDown) { this.progress[i] = 0; return; }
 
-    d.progress += dt / TILES[t.type].mineTime;
+    this.progress[i] += dt / TILES[tile.type].mineTime;
+    this.fx.fillStyle(0x000000, Math.min(this.progress[i], 1) * 0.7)
+      .fillRect(px, py, TILE_SIZE, TILE_SIZE);
 
-    // crack overlay: gets darker as the tile is drilled
-    this.cracks.fillStyle(0x000000, Math.min(d.progress, 1) * 0.7);
-    this.cracks.fillRect(tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+    if (this.progress[i] >= 1) {
+      const type = tile.type;
+      setTile(gx, gy, null);
+      game.players[i].inventory[type]++;
+      this.progress[i] = 0;
+      this.debris(px + TILE_SIZE / 2, py + TILE_SIZE / 2, COLORS[type]);
+    }
+  }
 
-    if (d.progress >= 1) {
-      const type: TileType = t.type;
-      setTile(tx, ty, null);
-      p.inventory[type]++;
-      this.drill[i] = null;
-      this.fall(i);
-      this.place(i);
+  private debris(x: number, y: number, color: number) {
+    for (let n = 0; n < 6; n++) {
+      const r = this.add.rectangle(x, y, 8, 8, color).setDepth(6);
+      this.tweens.add({
+        targets: r,
+        x: x + Phaser.Math.Between(-40, 40),
+        y: y + Phaser.Math.Between(10, 50),
+        alpha: 0, duration: 400,
+        onComplete: () => r.destroy(),
+      });
     }
   }
 }
