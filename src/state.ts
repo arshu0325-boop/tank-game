@@ -26,7 +26,7 @@ export interface PlayerState {
   fuel: number;
   iron: number;
   inventory: Record<TileType, number>;
-  charge: { missile: number; boomerang: number };
+  ammo: { missile: number; boomerang: number };
   structure: PlacedBlock[];
   shotsFired: number;
   hits: number;
@@ -53,7 +53,7 @@ function createPlayer(id: PlayerId, tankTexture = id === 1 ? "tank-blue" : "tank
     iron: 0,
     // Small starter supplies keep the first match playable; mining adds to these.
     inventory: { dirt: 6, stone: 4, obsidian: 2 },
-    charge: { missile: 0, boomerang: 0 },
+    ammo: { missile: 2, boomerang: 3 },
     structure: [],
     shotsFired: 0,
     hits: 0,

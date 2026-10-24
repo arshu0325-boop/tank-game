@@ -10,8 +10,9 @@ const BATTLE_P1_X = 445;
 const BATTLE_P2_X = 1755;
 const BATTLE_P1_BUILD_OFFSET = BATTLE_P1_X - TANK_X[1];
 const BATTLE_P2_BUILD_OFFSET = BATTLE_P2_X - TANK_X[2];
-const BATTLE_BASE_ZOOM = 1.1;
+const BATTLE_BASE_ZOOM = 1;
 const BATTLE_CAMERA_START_X = (BATTLE_WORLD_WIDTH - GAME_WIDTH / BATTLE_BASE_ZOOM) / 2;
+const TANK_EDGE_MARGIN = 28;
 // Tank movement settings. Fuel is charged by actual distance moved.
 const TANK_MOVE_SPEED = 190; // pixels per second
 const TANK_FUEL_PER_PIXEL = 0.04; // 4 fuel per 100 pixels
@@ -53,9 +54,7 @@ interface WeaponButtonVisual {
   background: Phaser.GameObjects.Rectangle;
   glow: Phaser.GameObjects.Rectangle;
   icon: Phaser.GameObjects.Image;
-  title: Phaser.GameObjects.Text;
-  chargeText?: Phaser.GameObjects.Text;
-  chargeBar?: Phaser.GameObjects.Graphics;
+  ammoText: Phaser.GameObjects.Text;
 }
 
 export class BattleScene extends Phaser.Scene {
@@ -67,8 +66,13 @@ export class BattleScene extends Phaser.Scene {
   private blocks: BattleBlock[] = [];
   private tanks!: Record<PlayerId, Phaser.GameObjects.Image>;
   private tankGlows?: Record<PlayerId, Phaser.GameObjects.Image>;
+  private uiCamera!: Phaser.Cameras.Scene2D.Camera;
+  private readonly mainCameraIgnored = new WeakSet<Phaser.GameObjects.GameObject>();
+  private readonly uiCameraIgnored = new WeakSet<Phaser.GameObjects.GameObject>();
   private activeProjectile: ProjectileState | null = null;
   private firedThisTurn = false;
+  private lastShotAt = Number.NEGATIVE_INFINITY;
+  private fireButtonPointerId: number | null = null;
   private power = 0.88;
   private fireMessage = "Aim with your mouse, then click to fire.";
   private turnText!: Phaser.GameObjects.Text;
@@ -77,13 +81,7 @@ export class BattleScene extends Phaser.Scene {
   private p2Text!: Phaser.GameObjects.Text;
   private statusText!: Phaser.GameObjects.Text;
   private powerText!: Phaser.GameObjects.Text;
-  private weaponText!: Phaser.GameObjects.Text;
-  private displayedCharge: Record<PlayerId, { missile: number; boomerang: number }> = {
-    1: { missile: 0, boomerang: 0 },
-    2: { missile: 0, boomerang: 0 },
-  };
   private weaponButtons: Partial<Record<WeaponType, WeaponButtonVisual>> = {};
-  private weaponButtonReady: Record<WeaponType, boolean> = { shell: true, missile: false, boomerang: false };
 
   // Point at the battlefield to aim, then release to fire.
   private isAiming = false;
@@ -114,6 +112,8 @@ export class BattleScene extends Phaser.Scene {
     this.blocks = [];
     this.activeProjectile = null;
     this.firedThisTurn = false;
+    this.lastShotAt = Number.NEGATIVE_INFINITY;
+    this.fireButtonPointerId = null;
     this.tankGlows = undefined;
     this.resolving = false;
     this.fireMessage = "";
@@ -127,9 +127,6 @@ export class BattleScene extends Phaser.Scene {
 
     gameState.selectedWeapon = "shell";
     gameState.round = 1;
-    for (const id of [1, 2] as PlayerId[]) {
-      this.displayedCharge[id] = { ...playerById(id).charge };
-    }
     drawSky(this, false, BATTLE_WORLD_WIDTH);
     this.drawArenaGrid();
     this.createTerrain();
@@ -149,13 +146,15 @@ export class BattleScene extends Phaser.Scene {
     }
     this.aimGraphics = this.add.graphics().setDepth(15);
     this.createHud();
-    const uiCamera = this.cameras.add(0, 0, GAME_WIDTH, GAME_HEIGHT);
-    uiCamera.setZoom(1).setScroll(0, 0);
+    this.uiCamera = this.cameras.add(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    this.uiCamera.setZoom(1).setScroll(0, 0);
     const children = this.children.list as Array<Phaser.GameObjects.GameObject & { depth: number }>;
     const worldObjects = children.filter((child) => child.depth < 25);
     const interfaceObjects = children.filter((child) => child.depth >= 25);
     camera.ignore(interfaceObjects);
-    uiCamera.ignore(worldObjects);
+    this.uiCamera.ignore(worldObjects);
+    worldObjects.forEach((object) => this.uiCameraIgnored.add(object));
+    interfaceObjects.forEach((object) => this.mainCameraIgnored.add(object));
     if (this.input.keyboard) {
       this.keys = this.input.keyboard.addKeys({
         one: Phaser.Input.Keyboard.KeyCodes.ONE,
@@ -174,13 +173,15 @@ export class BattleScene extends Phaser.Scene {
     this.input.off("pointerdown", this.handlePointerDown, this);
     this.input.off("pointerup", this.handlePointerUp, this);
     this.input.off("pointerupoutside", this.handlePointerUp, this);
+    this.input.off("pointerupoutside", this.handlePointerUpOutside, this);
     this.input.on("pointerdown", this.handlePointerDown, this);
     this.input.on("pointerup", this.handlePointerUp, this);
-    this.input.on("pointerupoutside", this.handlePointerUp, this);
+    this.input.on("pointerupoutside", this.handlePointerUpOutside, this);
     this.updateHud();
   }
 
   update(_time: number, delta: number): void {
+    this.syncCameraLayers();
     if (this.input.keyboard && this.keys) {
       if (Phaser.Input.Keyboard.JustDown(this.keys.one)) this.selectWeapon("shell");
       if (Phaser.Input.Keyboard.JustDown(this.keys.two)) this.selectWeapon("missile");
@@ -203,8 +204,10 @@ export class BattleScene extends Phaser.Scene {
     this.tanks[1].y = this.terrainAt(this.tanks[1].x);
     this.tanks[2].y = this.terrainAt(this.tanks[2].x);
     this.syncTankGlows();
-    if (!this.activeProjectile && !this.resolving && !this.isAiming) {
-      this.cameras.main.scrollX = this.battleCameraScrollX();
+    if (!this.resolving && !this.isAiming) {
+      const zoom = this.battleCameraZoomForTanks();
+      this.cameras.main.setZoom(zoom);
+      this.cameras.main.scrollX = this.battleCameraScrollX(zoom);
     }
     if (this.isAiming && this.aimPointerId !== null) {
       const pointer = this.input.pointer1.id === this.aimPointerId
@@ -225,8 +228,23 @@ export class BattleScene extends Phaser.Scene {
     else this.drawAimGuide();
     this.timerText.setText(`ROUND ${gameState.round}`);
     this.powerText.setText(`POWER  ${Math.round(this.effectivePower() * 100)}%`);
-    this.weaponText.setText(this.weaponStatusText());
     this.updateHud(delta / 1000);
+    this.syncCameraLayers();
+  }
+
+  private syncCameraLayers(): void {
+    const children = this.children.list as Array<Phaser.GameObjects.GameObject & { depth: number }>;
+    for (const object of children) {
+      if (object.depth < 25) {
+        if (!this.uiCameraIgnored.has(object)) {
+          this.uiCamera.ignore(object);
+          this.uiCameraIgnored.add(object);
+        }
+      } else if (!this.mainCameraIgnored.has(object)) {
+        this.cameras.main.ignore(object);
+        this.mainCameraIgnored.add(object);
+      }
+    }
   }
 
   private updateTankMovement(deltaSeconds: number): void {
@@ -241,8 +259,8 @@ export class BattleScene extends Phaser.Scene {
 
     // Clamp the tank to its own half of the battlefield and keep it fully on screen.
     const halfTankWidth = tank.displayWidth / 2;
-    const minX = id === 1 ? halfTankWidth : BATTLE_WORLD_WIDTH / 2 + halfTankWidth;
-    const maxX = id === 1 ? BATTLE_WORLD_WIDTH / 2 - halfTankWidth : BATTLE_WORLD_WIDTH - halfTankWidth;
+    const minX = id === 1 ? halfTankWidth + TANK_EDGE_MARGIN : BATTLE_WORLD_WIDTH / 2 + halfTankWidth;
+    const maxX = id === 1 ? BATTLE_WORLD_WIDTH / 2 - halfTankWidth : BATTLE_WORLD_WIDTH - halfTankWidth - TANK_EDGE_MARGIN;
 
     // Cap large frame times so the tank does not jump after a brief tab switch.
     const safeDelta = Math.min(deltaSeconds, 0.05);
@@ -366,46 +384,40 @@ export class BattleScene extends Phaser.Scene {
     this.statusText = this.add.text(GAME_WIDTH / 2, 790, "", {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "15px", color: "#e9f5f8", stroke: "#121920", strokeThickness: 3,
     }).setOrigin(0.5).setDepth(27);
-    this.makeWeaponButton(570, "shell", "TANK SHOT", 0x344856);
-    this.makeWeaponButton(730, "missile", "MISSILE", 0x4b3b32);
-    this.makeWeaponButton(890, "boomerang", "BOOMERANG", 0x24464e);
-    this.add.rectangle(1140, 850, 174, 66, 0xa94432, 1).setStrokeStyle(3, 0xffc18b, 1).setDepth(26);
-    this.add.text(1140, 850, "FIRE  •  SPACE", {
+    this.makeWeaponButton(500, "shell", 0x344856);
+    this.makeWeaponButton(650, "missile", 0x4b3b32);
+    this.makeWeaponButton(800, "boomerang", 0x24464e);
+    this.add.rectangle(1035, 850, 174, 66, 0xa94432, 1).setStrokeStyle(3, 0xffc18b, 1).setDepth(26);
+    this.add.text(1035, 850, "FIRE  •  SPACE", {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "19px", color: "#fff7eb", stroke: "#502218", strokeThickness: 4,
     }).setOrigin(0.5).setDepth(27);
-    this.powerText = this.add.text(1400, 838, "POWER 88%", {
+    this.powerText = this.add.text(1275, 844, "POWER 88%", {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "19px", color: "#ffe18c", stroke: "#1e2020", strokeThickness: 4,
     }).setOrigin(0.5).setDepth(27);
-    this.weaponText = this.add.text(1400, 870, "TANK SHOT", {
-      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "14px", color: "#f4f4ee", stroke: "#1e2020", strokeThickness: 3,
-    }).setOrigin(0.5).setDepth(27);
-    this.add.text(GAME_WIDTH / 2, 893, "AIM WITH THE CURSOR  •  RELEASE TO FIRE     |     MOVE: P1 A/D   P2 ←/→     |     POWER: ↑ / ↓", {
+    this.add.text(GAME_WIDTH / 2, 893, "CHOOSE A WEAPON  •  AIM WITH CURSOR / RELEASE TO FIRE     |     MOVE: P1 A/D   P2 ←/→     |     POWER: ↑ / ↓", {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "13px", color: "#d6e0e5", stroke: "#111820", strokeThickness: 3,
     }).setOrigin(0.5).setDepth(27);
   }
 
-  private makeWeaponButton(x: number, type: WeaponType, label: string, color: number): void {
-    const glow = this.add.rectangle(x, 850, 160, 78, color, 0)
+  private makeWeaponButton(x: number, type: WeaponType, color: number): void {
+    const glow = this.add.rectangle(x, 846, 116, 88, color, 0)
       .setStrokeStyle(4, color, 0.9).setDepth(25);
-    const background = this.add.rectangle(x, 850, 148, 64, color, 1)
+    const background = this.add.rectangle(x, 846, 104, 76, color, 1)
       .setStrokeStyle(2, 0xaec2cb, 0.9).setDepth(26)
       .setInteractive({ useHandCursor: true });
     background.on("pointerdown", () => this.selectWeapon(type));
-    const chargedWeapon = type !== "shell";
-    const icon = this.add.image(x - 43, chargedWeapon ? 837 : 850, `projectile-${type}`)
-      .setScale(type === "shell" ? 0.72 : 0.62).setDepth(27);
-    const title = this.add.text(x + 12, chargedWeapon ? 837 : 850, label, {
-      fontFamily: "Arial Black, Arial, sans-serif",
-      fontSize: type === "boomerang" ? "11px" : type === "shell" ? "11px" : "14px",
-      color: "#ffffff", stroke: "#10151a", strokeThickness: 4,
-    }).setOrigin(0.5).setDepth(27);
-    const visual: WeaponButtonVisual = { background, glow, icon, title };
-    if (chargedWeapon) {
-      visual.chargeText = this.add.text(x, 857, "0%", {
-        fontFamily: "Arial Black, Arial, sans-serif", fontSize: "12px", color: "#d5dce0", stroke: "#10151a", strokeThickness: 3,
-      }).setOrigin(0.5).setDepth(27);
-      visual.chargeBar = this.add.graphics().setDepth(27);
-    }
+    const iconSize: Record<WeaponType, [number, number]> = {
+      shell: [74, 37], missile: [80, 34], boomerang: [62, 62],
+    };
+    const [iconWidth, iconHeight] = iconSize[type];
+    const icon = this.add.image(x, 844, `projectile-${type}`)
+      .setDisplaySize(iconWidth, iconHeight).setDepth(27);
+    const ammoText = this.add.text(x + 35, 870, type === "shell" ? "∞" : `×${playerById(gameState.currentPlayer).ammo[type]}`, {
+      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "16px", color: "#ffffff", stroke: "#10151a", strokeThickness: 4,
+      backgroundColor: "#101820",
+      padding: { left: 4, right: 4, top: 1, bottom: 1 },
+    }).setOrigin(1, 0.5).setDepth(28);
+    const visual: WeaponButtonVisual = { background, glow, icon, ammoText };
     this.weaponButtons[type] = visual;
   }
 
@@ -414,12 +426,11 @@ export class BattleScene extends Phaser.Scene {
 
     // Weapon buttons remain clickable and do not start an aiming drag.
     if (pointer.y >= 810) {
-      if (pointer.x >= 495 && pointer.x < 645) this.selectWeapon("shell");
-      else if (pointer.x >= 655 && pointer.x < 805) this.selectWeapon("missile");
-      else if (pointer.x >= 815 && pointer.x < 965) this.selectWeapon("boomerang");
-      else if (pointer.x >= 1050 && pointer.x < 1230) {
-        this.fireWeapon(undefined, undefined, this.currentAimAngle, this.effectivePower());
-        this.cancelAim();
+      if (pointer.x >= 448 && pointer.x < 552) this.selectWeapon("shell");
+      else if (pointer.x >= 598 && pointer.x < 702) this.selectWeapon("missile");
+      else if (pointer.x >= 748 && pointer.x < 852) this.selectWeapon("boomerang");
+      else if (pointer.x >= 945 && pointer.x < 1125) {
+        this.fireButtonPointerId = pointer.id;
       }
       return;
     }
@@ -433,6 +444,14 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private handlePointerUp(pointer: Phaser.Input.Pointer): void {
+    if (this.fireButtonPointerId === pointer.id) {
+      this.fireButtonPointerId = null;
+      this.cancelAim();
+      if (pointer.x >= 945 && pointer.x < 1125 && pointer.y >= 810) {
+        this.fireWeapon(undefined, undefined, this.currentAimAngle, this.power);
+      }
+      return;
+    }
     if (!this.isAiming || (this.aimPointerId !== null && pointer.id !== this.aimPointerId)) return;
     if (!this.resolving && !this.activeProjectile) {
       const point = this.battleWorldPoint(pointer);
@@ -444,6 +463,11 @@ export class BattleScene extends Phaser.Scene {
     } else {
       this.cancelAim();
     }
+  }
+
+  private handlePointerUpOutside(pointer: Phaser.Input.Pointer): void {
+    if (this.fireButtonPointerId === pointer.id) this.fireButtonPointerId = null;
+    if (this.isAiming && (this.aimPointerId === null || pointer.id === this.aimPointerId)) this.cancelAim();
   }
 
   private cancelAim(): void {
@@ -458,106 +482,45 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private selectWeapon(type: WeaponType): void {
+    const player = playerById(gameState.currentPlayer);
+    if (type !== "shell" && player.ammo[type] <= 0) {
+      this.fireMessage = `No ${WEAPONS[type].label.toLowerCase()} ammo left.`;
+      this.updateHud();
+      return;
+    }
     gameState.selectedWeapon = type;
     this.updateHud();
   }
 
-  private weaponStatusText(): string {
-    const player = playerById(gameState.currentPlayer);
-    const type = gameState.selectedWeapon;
-    if (type === "shell") return "TANK SHOT  •  unlimited  •  1 damage";
-    const charge = player.charge[type];
-    const status = charge >= 100 ? "READY" : `${charge}% CHARGED`;
-    return `${WEAPONS[type].label}  •  ${status}  •  ${WEAPONS[type].damage} damage`;
-  }
-
-  private updateHud(deltaSeconds = 0): void {
+  private updateHud(_deltaSeconds = 0): void {
     this.hudGraphics.clear();
     const p1 = playerById(1);
     const p2 = playerById(2);
-    for (const id of [1, 2] as PlayerId[]) {
-      const charge = this.displayedCharge[id];
-      const actual = playerById(id).charge;
-      const blend = 1 - Math.exp(-7 * deltaSeconds);
-      charge.missile = Phaser.Math.Linear(charge.missile, actual.missile, blend);
-      charge.boomerang = Phaser.Math.Linear(charge.boomerang, actual.boomerang, blend);
-    }
     this.drawPlayerBars(20, 18, 350, p1.hp, p1.fuel, 0x42b6ff);
     this.drawPlayerBars(1230, 18, 350, p2.hp, p2.fuel, 0xff6262);
     this.p1Text.setText(`HP ${p1.hp}  •  FUEL ${Math.ceil(p1.fuel)}  •  HITS ${p1.hits}`);
     this.p2Text.setText(`HP ${p2.hp}  •  FUEL ${Math.ceil(p2.fuel)}  •  HITS ${p2.hits}`);
     this.turnText.setText(`BATTLE PHASE  •  P${gameState.currentPlayer} TURN`);
     this.statusText.setText(this.fireMessage);
-    const weaponButtons: Array<[number, WeaponType]> = [[570, "shell"], [730, "missile"], [890, "boomerang"]];
+    const weaponButtons: Array<[number, WeaponType]> = [[500, "shell"], [650, "missile"], [800, "boomerang"]];
     for (const [x, type] of weaponButtons) {
       const selected = gameState.selectedWeapon === type;
       const visual = this.weaponButtons[type];
-      const actualCharge = type === "shell" ? 100 : playerById(gameState.currentPlayer).charge[type];
-      const charge = type === "shell" ? 100 : this.displayedCharge[gameState.currentPlayer][type];
-      const ready = actualCharge >= 100;
-      const dimAlpha = type === "shell" || ready ? 1 : 0.48;
-      visual?.background.setAlpha(dimAlpha).setStrokeStyle(ready && type !== "shell" ? 3 : 2,
-        ready && type !== "shell" ? WEAPONS[type].color : 0xaec2cb,
-        ready && type !== "shell" ? 1 : 0.7);
-      visual?.title.setAlpha(dimAlpha);
+      const player = playerById(gameState.currentPlayer);
+      const available = type === "shell" || player.ammo[type] > 0;
+      const dimAlpha = available ? 1 : 0.32;
+      visual?.background.setAlpha(dimAlpha)
+        .setStrokeStyle(selected ? 3 : 2, selected ? WEAPONS[type].color : 0xaec2cb, selected ? 1 : 0.72);
       visual?.icon.setAlpha(dimAlpha);
-      visual?.chargeText?.setAlpha(dimAlpha).setText(ready ? "READY!" : `${Math.round(charge)}%`);
-      if (type !== "shell" && this.weaponButtonReady[type] !== ready && visual) {
-        this.weaponButtonReady[type] = ready;
-        this.animateWeaponButton(type, visual, ready);
-      }
-      if (visual?.chargeBar) {
-        visual.chargeBar.clear();
-        visual.chargeBar.fillStyle(0x05080b, 0.95).fillRoundedRect(x - 58, 869, 116, 6, 3);
-        if (charge > 0) visual.chargeBar.fillStyle(ready ? WEAPONS[type].color : 0x76828a, 1)
-          .fillRoundedRect(x - 56, 871, 112 * clamp(charge / 100, 0, 1), 2, 1);
-      }
-      const selectedIsAvailable = selected && (type === "shell" || ready);
-      this.hudGraphics.lineStyle(selectedIsAvailable ? 4 : 1,
-        selectedIsAvailable ? 0x51dcff : 0x5d6469,
-        selectedIsAvailable ? 1 : 0.45);
-      this.hudGraphics.strokeRoundedRect(x - 76, 817, 152, 66, 5);
+      visual?.ammoText.setAlpha(dimAlpha).setText(type === "shell" ? "∞" : `×${player.ammo[type]}`);
+      visual?.glow.setAlpha(selected && available ? 0.34 : 0.04)
+        .setFillStyle(WEAPONS[type].color, selected && available ? 0.2 : 0)
+        .setStrokeStyle(selected && available ? 4 : 1, WEAPONS[type].color, selected && available ? 1 : 0.2);
+      this.hudGraphics.lineStyle(selected && available ? 3 : 1,
+        selected && available ? WEAPONS[type].color : 0x5d6469,
+        selected && available ? 1 : 0.38);
+      this.hudGraphics.strokeRoundedRect(x - 54, 808, 108, 76, 8);
     }
-  }
-
-  private animateWeaponButton(type: WeaponType, visual: WeaponButtonVisual, ready: boolean): void {
-    const targets = [visual.glow, visual.background, visual.title, visual.chargeText].filter(Boolean) as Phaser.GameObjects.GameObject[];
-    this.tweens.killTweensOf(targets);
-    if (!ready) {
-      visual.glow.setAlpha(0).setScale(1);
-      visual.background.setScale(1);
-      visual.title.setScale(1);
-      visual.chargeText?.setScale(1);
-      return;
-    }
-
-    const color = WEAPONS[type].color;
-    visual.glow.setFillStyle(color, 0.2).setStrokeStyle(5, color, 1).setAlpha(0.9).setScale(0.92);
-    visual.background.setStrokeStyle(3, color, 1).setScale(1);
-    this.tweens.add({
-      targets: visual.glow,
-      alpha: { from: 0.92, to: 0.32 },
-      scale: { from: 0.92, to: 1.18 },
-      duration: 620,
-      yoyo: true,
-      repeat: -1,
-      ease: "Sine.easeInOut",
-    });
-    this.tweens.add({
-      targets: visual.background,
-      scale: { from: 1, to: 1.055 },
-      duration: 180,
-      yoyo: true,
-      repeat: 1,
-      ease: "Back.easeOut",
-    });
-    this.tweens.add({
-      targets: visual.chargeText,
-      scale: { from: 1, to: 1.16 },
-      duration: 190,
-      yoyo: true,
-      ease: "Back.easeOut",
-    });
   }
 
   private drawPlayerBars(x: number, y: number, width: number, hp: number, fuel: number, accent: number): void {
@@ -573,11 +536,6 @@ export class BattleScene extends Phaser.Scene {
     this.hudGraphics.fillStyle(0x05080b, 1).fillRect(x, y, w, h);
     this.hudGraphics.lineStyle(2, 0x020405, 1).strokeRect(x, y, w, h);
     this.hudGraphics.fillStyle(color, 1).fillRect(x + 2, y + 2, fillWidth, h - 4);
-  }
-
-  private pulseChargeText(id: PlayerId): void {
-    const label = id === 1 ? this.p1Text : this.p2Text;
-    this.tweens.add({ targets: label, alpha: 0.45, duration: 110, yoyo: true, repeat: 3, onComplete: () => label.setAlpha(1) });
   }
 
   private drawAimGuide(): void {
@@ -664,16 +622,20 @@ export class BattleScene extends Phaser.Scene {
 
   private fireWeapon(pointerX?: number, pointerY?: number, angleOverride?: number, powerOverride?: number): void {
     if (this.resolving || this.activeProjectile || this.firedThisTurn) return;
+    const now = this.time.now;
+    if (now - this.lastShotAt < 250) return;
     const ownerId = gameState.currentPlayer;
     const player = playerById(ownerId);
     const weaponType = gameState.selectedWeapon;
-    if (weaponType !== "shell" && player.charge[weaponType] < 100) {
-      this.fireMessage = `${WEAPONS[weaponType].label} charging: ${player.charge[weaponType]}% — hit or break the enemy wall.`;
+    if (weaponType !== "shell" && player.ammo[weaponType] <= 0) {
+      this.fireMessage = `No ${WEAPONS[weaponType].label.toLowerCase()} ammo left. Choose another weapon.`;
       this.updateHud();
       return;
     }
-    if (weaponType !== "shell") player.charge[weaponType] -= 100;
     this.firedThisTurn = true;
+    this.lastShotAt = now;
+    if (weaponType !== "shell") player.ammo[weaponType] -= 1;
+    this.updateHud();
     const pointer = this.input.activePointer;
     const aimPoint = this.battleWorldPoint(pointer);
     const aimX = pointerX ?? aimPoint.x;
@@ -683,19 +645,15 @@ export class BattleScene extends Phaser.Scene {
     const spec = WEAPONS[weaponType];
     const speed = spec.speed * clamp(powerOverride ?? this.power, 0.5, 1.5);
     const dir = ownerId === 1 ? 1 : -1;
+    this.aimGraphics.clear();
     const projectileImage = this.add.image(origin.x, origin.y, `projectile-${weaponType}`)
-      .setScale(0.55).setDepth(16);
+      .setScale(0.55).setDepth(16)
+      .setTint(gameState.nightMode ? spec.color : 0xffffff);
     projectileImage.setRotation(angle);
     this.tweens.add({ targets: projectileImage, scale: 1.15, duration: 240, ease: "Cubic.easeOut" });
-    const glowImage = gameState.nightMode
-      ? this.add.image(origin.x, origin.y, "night-halo")
-        .setDisplaySize(74, 74)
-        .setTint(spec.color)
-        .setBlendMode(Phaser.BlendModes.ADD)
-        .setAlpha(0.92)
-        .setDepth(15.5)
-        .setRotation(angle)
-      : null;
+    // Keep exactly one visible moving shot. Night mode tints that sprite;
+    // a second halo sprite made the projectile look like a duplicate.
+    const glowImage = null;
     this.activeProjectile = {
       x: origin.x,
       y: origin.y,
@@ -714,8 +672,7 @@ export class BattleScene extends Phaser.Scene {
     };
     player.shotsFired += 1;
     this.tweens.killTweensOf(this.cameras.main);
-    this.tweens.add({ targets: this.cameras.main, zoom: 1.32, duration: 260, ease: "Quad.easeOut" });
-    this.cameras.main.startFollow(projectileImage, true, 0.13, 0.13);
+    this.cameras.main.stopFollow();
     this.chargeBonus = 0;
     // Firing is free: fuel decreases only when the tank moves.
     this.fireMessage = `P${ownerId} fired ${spec.label.toLowerCase()} at ${Math.round(clamp(powerOverride ?? this.power, 0.5, 1.5) * 100)}% power — wait for impact.`;
@@ -766,7 +723,7 @@ export class BattleScene extends Phaser.Scene {
     const travelAngle = Math.atan2(projectile.vy, projectile.vx);
     projectile.image.setRotation(travelAngle + (projectile.weapon === "boomerang" ? projectile.age * 7 : 0));
     projectile.glowImage?.setPosition(projectile.x, projectile.y).setRotation(projectile.image.rotation);
-    while (projectile.trailClock >= 0.024) {
+    while (projectile.weapon !== "shell" && projectile.trailClock >= 0.024) {
       projectile.trailClock -= 0.024;
       this.emitProjectileTrail(projectile);
     }
@@ -828,9 +785,6 @@ export class BattleScene extends Phaser.Scene {
     if (this.resolving) return;
     this.resolving = true;
     const enemyId = otherPlayerId(projectile.ownerId);
-    let enemyWallHit = false;
-    let wallBroken = false;
-
     for (const block of [...this.blocks]) {
       if (block.ownerId === projectile.ownerId) continue;
       const d = distance(x, y, block.x, block.y);
@@ -840,14 +794,12 @@ export class BattleScene extends Phaser.Scene {
       block.hp -= blockDamage;
       block.image.setAlpha(clamp(0.48 + 0.52 * (block.hp / BLOCK_HP[block.type]), 0.18, 1));
       this.emitBlockParticles(block.x, block.y, block.type === "dirt" ? 0xc8915f : block.type === "stone" ? 0xc4d0d5 : 0xb7a4e4, block.hp <= 0 ? 13 : 3);
-      if (block.ownerId !== projectile.ownerId) enemyWallHit = true;
       if (block.hp <= 0) {
         block.image.destroy();
         this.blocks = this.blocks.filter((entry) => entry !== block);
         const ownerStructure = playerById(block.ownerId).structure;
         const index = ownerStructure.findIndex((entry) => entry.col === block.col && entry.row === block.row);
         if (index >= 0) ownerStructure.splice(index, 1);
-        if (block.ownerId !== projectile.ownerId) wallBroken = true;
       }
     }
 
@@ -867,16 +819,14 @@ export class BattleScene extends Phaser.Scene {
       }
     }
 
-    if (enemyWallHit) {
-      const attacker = playerById(projectile.ownerId);
-      attacker.charge.missile = Math.min(100, attacker.charge.missile + (wallBroken ? 24 : 15));
-      attacker.charge.boomerang = Math.min(100, attacker.charge.boomerang + (wallBroken ? 38 : 22));
-      this.pulseChargeText(projectile.ownerId);
-      this.fireMessage = wallBroken
-        ? `Enemy block broken! Missile +${wallBroken ? 24 : 15}% • Boomerang +${wallBroken ? 38 : 22}%`
-        : "Enemy wall hit! Missile and boomerang charge increased.";
-    } else {
-      this.fireMessage = `${WEAPONS[projectile.weapon].label} impact • ${projectile.damage} damage • crater radius ${projectile.radius}px`;
+    const eliminatedIds = ([1, 2] as PlayerId[]).filter((id) => playerById(id).hp <= 0);
+    this.fireMessage = `${WEAPONS[projectile.weapon].label} impact • ${projectile.damage} damage • crater radius ${projectile.radius}px`;
+
+    if (eliminatedIds.length > 0) {
+      this.fireMessage = eliminatedIds.length === 2
+        ? "BOTH TANKS DESTROYED!"
+        : `P${eliminatedIds[0]} TANK DESTROYED!`;
+      eliminatedIds.forEach((id) => this.showTankElimination(id));
     }
 
     this.showExplosion(x, y, projectile.radius, WEAPONS[projectile.weapon].color);
@@ -887,7 +837,7 @@ export class BattleScene extends Phaser.Scene {
     this.cameras.main.stopFollow();
     this.updateHud();
 
-    this.time.delayedCall(420, () => {
+    this.time.delayedCall(eliminatedIds.length > 0 ? 1550 : 420, () => {
       const p1 = playerById(1);
       const p2 = playerById(2);
       if (p1.hp <= 0 || p2.hp <= 0) {
@@ -900,7 +850,7 @@ export class BattleScene extends Phaser.Scene {
         gameState.round += 1;
         this.resolving = false;
         this.firedThisTurn = false;
-        this.fireMessage = `P${gameState.currentPlayer} turn — ${this.weaponStatusText()}`;
+        this.fireMessage = `P${gameState.currentPlayer} turn — choose a weapon and fire.`;
         this.updateHud();
       });
     });
@@ -961,6 +911,123 @@ export class BattleScene extends Phaser.Scene {
     }
   }
 
+  private showTankElimination(id: PlayerId): void {
+    const tank = this.tanks[id];
+    const x = tank.x;
+    const groundY = this.terrainAt(x);
+    const y = groundY - 27;
+
+    this.showDeathBlast(x, y);
+    this.cameras.main.shake(620, 0.022);
+    const glow = this.tankGlows?.[id];
+    if (glow) {
+      this.tweens.killTweensOf(glow);
+      this.tweens.add({ targets: glow, alpha: 0, duration: 240 });
+    }
+
+    this.tweens.add({
+      targets: tank,
+      x: x + (id === 1 ? -4 : 4),
+      angle: { from: -5, to: 5 },
+      duration: 65,
+      yoyo: true,
+      repeat: 3,
+      onComplete: () => {
+        this.tweens.add({
+          targets: tank,
+          alpha: 0,
+          scale: 0.2,
+          y: groundY + 8,
+          duration: 360,
+          ease: "Cubic.easeIn",
+          onComplete: () => tank.setVisible(false),
+        });
+      },
+    });
+
+    this.time.delayedCall(360, () => this.showGravestone(x, groundY - 3));
+  }
+
+  private showDeathBlast(x: number, y: number): void {
+    const outer = this.add.circle(x, y, 46, 0xff771c, 0.78)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(20)
+      .setScale(0.18);
+    const inner = this.add.circle(x, y, 27, 0xffef8a, 0.98)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(21)
+      .setScale(0.12);
+    this.tweens.add({
+      targets: outer,
+      scale: 2.8,
+      alpha: 0,
+      duration: 620,
+      ease: "Cubic.easeOut",
+      onComplete: () => outer.destroy(),
+    });
+    this.tweens.add({
+      targets: inner,
+      scale: 1.7,
+      alpha: 0,
+      duration: 300,
+      ease: "Cubic.easeOut",
+      onComplete: () => inner.destroy(),
+    });
+
+    const fireColors = [0xfff0a0, 0xffa324, 0xff5728, 0xffd24a];
+    for (let i = 0; i < 30; i++) {
+      const angle = (Math.PI * 2 * i) / 30 + Phaser.Math.FloatBetween(-0.12, 0.12);
+      const distance = Phaser.Math.Between(55, 150);
+      const spark = this.add.circle(
+        x + Phaser.Math.Between(-14, 14),
+        y + Phaser.Math.Between(-12, 12),
+        Phaser.Math.Between(3, 8),
+        fireColors[i % fireColors.length],
+        1,
+      ).setBlendMode(Phaser.BlendModes.ADD).setDepth(21);
+      this.tweens.add({
+        targets: spark,
+        x: x + Math.cos(angle) * distance,
+        y: y + Math.sin(angle) * distance - Phaser.Math.Between(5, 45),
+        scale: 0.12,
+        alpha: 0,
+        duration: Phaser.Math.Between(420, 760),
+        ease: "Cubic.easeOut",
+        onComplete: () => spark.destroy(),
+      });
+    }
+  }
+
+  private showGravestone(x: number, groundY: number): void {
+    const stone = this.add.container(x, groundY + 15).setDepth(22).setAlpha(0).setScale(0.35);
+    const art = this.add.graphics();
+    art.fillStyle(0x4c5963, 1);
+    art.fillRoundedRect(-28, -70, 56, 73, 20);
+    art.lineStyle(3, 0xc7d1d5, 0.95);
+    art.strokeRoundedRect(-28, -70, 56, 73, 20);
+    art.fillStyle(0x303b43, 1);
+    art.fillRect(-32, -7, 64, 10);
+    art.lineStyle(2, 0x39434a, 1);
+    art.lineBetween(-19, -19, 19, -19);
+    stone.add(art);
+    const inscription = this.add.text(0, -43, "R.I.P.", {
+      fontFamily: "Arial Black, Arial, sans-serif",
+      fontSize: "14px",
+      color: "#fff1d0",
+      stroke: "#303b43",
+      strokeThickness: 3,
+    }).setOrigin(0.5);
+    stone.add(inscription);
+    this.tweens.add({
+      targets: stone,
+      y: groundY - 2,
+      alpha: 1,
+      scale: 1,
+      duration: 420,
+      ease: "Back.easeOut",
+    });
+  }
+
   private emitBlockParticles(x: number, y: number, color: number, count: number): void {
     for (let i = 0; i < count; i++) {
       const particle = this.add.rectangle(x, y, Phaser.Math.Between(3, 6), Phaser.Math.Between(3, 6), color, 1).setDepth(12);
@@ -980,10 +1047,11 @@ export class BattleScene extends Phaser.Scene {
   private returnCameraToStart(onComplete?: () => void): void {
     const camera = this.cameras.main;
     camera.stopFollow();
+    const zoom = this.battleCameraZoomForTanks();
     this.tweens.add({
       targets: camera,
-      scrollX: this.battleCameraScrollX(BATTLE_BASE_ZOOM),
-      zoom: BATTLE_BASE_ZOOM,
+      scrollX: this.battleCameraScrollX(zoom),
+      zoom,
       duration: 320,
       ease: "Sine.easeInOut",
       onComplete,
@@ -994,6 +1062,14 @@ export class BattleScene extends Phaser.Scene {
     const tanksCenter = (this.tanks[1].x + this.tanks[2].x) / 2;
     const viewWidth = GAME_WIDTH / zoom;
     return clamp(tanksCenter - viewWidth / 2, 0, BATTLE_WORLD_WIDTH - viewWidth);
+  }
+
+  private battleCameraZoomForTanks(): number {
+    const left = this.tanks[1].x - this.tanks[1].displayWidth / 2 - TANK_EDGE_MARGIN;
+    const right = this.tanks[2].x + this.tanks[2].displayWidth / 2 + TANK_EDGE_MARGIN;
+    const span = Math.max(1, right - left);
+    const minZoom = GAME_WIDTH / BATTLE_WORLD_WIDTH;
+    return clamp(GAME_WIDTH / span, minZoom, BATTLE_BASE_ZOOM);
   }
 
   private muzzlePosition(id: PlayerId): { x: number; y: number } {
@@ -1009,6 +1085,7 @@ export class BattleScene extends Phaser.Scene {
   private drawCannons(): void {
     this.cannonGraphics.clear();
     for (const id of [1, 2] as PlayerId[]) {
+      if (playerById(id).hp <= 0) continue;
       const dir = id === 1 ? 1 : -1;
       const angle = id === gameState.currentPlayer ? this.currentAimAngle : -0.55;
       const x = this.tanks[id].x + dir * 6;
