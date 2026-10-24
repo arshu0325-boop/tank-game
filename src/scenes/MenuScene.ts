@@ -1,6 +1,6 @@
 
 import Phaser from "phaser";
-import { GAME_HEIGHT, GAME_WIDTH, drawSky } from "../grid";
+import { GAME_HEIGHT, GAME_WIDTH } from "../grid";
 import { gameState, playerById } from "../state";
 
 export class MenuScene extends Phaser.Scene {
@@ -14,9 +14,12 @@ export class MenuScene extends Phaser.Scene {
   }
 
   create(): void {
-    drawSky(this, true);
-    this.drawMenuGround();
-    this.drawPixelDecorations();
+    this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, "opening-background")
+      .setDisplaySize(GAME_WIDTH, GAME_HEIGHT)
+      .setDepth(-10);
+    // A soft tint keeps the title and menu controls clear over the artwork.
+    this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x07142b, 0.12)
+      .setDepth(1.5);
     this.createNightLook();
     this.drawTitlePanel();
     this.drawStartButton();
