@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { GAME_WIDTH, drawSky } from "../grid";
+import { GAME_HEIGHT, GAME_WIDTH } from "../grid";
 import { gameState, MAX_HP, playerById, resetGameState } from "../state";
 
 const DISPLAY_FONT = "Arial Black, Arial, sans-serif";
@@ -11,8 +11,10 @@ export class ResultScene extends Phaser.Scene {
   }
 
   create(): void {
-    drawSky(this, true);
-    this.drawGround();
+    const background = gameState.nightMode ? "result-night-bg" : "result-day-bg";
+    this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, background)
+      .setDisplaySize(GAME_WIDTH, GAME_HEIGHT)
+      .setDepth(0);
     const winner = gameState.winner;
     const headline = winner === 0 ? "DRAW!" : winner === 1 ? "P1 WINS!" : "P2 WINS!";
     const color = winner === 1 ? "#75d5ff" : winner === 2 ? "#ff8881" : "#ffe37d";
@@ -73,26 +75,6 @@ export class ResultScene extends Phaser.Scene {
     card.add([panel, heading, health, stats, barBack, bar]);
     this.tweens.add({ targets: card, alpha: 1, y: 490, duration: 420, delay: 220 + delay, ease: "Back.Out" });
     this.tweens.add({ targets: card, y: 486, duration: 1250, delay: 720 + delay, yoyo: true, repeat: -1, ease: "Sine.InOut" });
-  }
-
-  private drawGround(): void {
-    const g = this.add.graphics().setDepth(1);
-    g.fillStyle(0x5f7c3b, 1);
-    g.fillPoints([
-      new Phaser.Geom.Point(0, 650), new Phaser.Geom.Point(170, 625), new Phaser.Geom.Point(350, 662),
-      new Phaser.Geom.Point(550, 625), new Phaser.Geom.Point(780, 685), new Phaser.Geom.Point(1000, 640),
-      new Phaser.Geom.Point(1210, 665), new Phaser.Geom.Point(1410, 620), new Phaser.Geom.Point(1600, 653),
-      new Phaser.Geom.Point(1600, 900), new Phaser.Geom.Point(0, 900),
-    ], true);
-    g.lineStyle(8, 0x79a844, 1);
-    g.beginPath();
-    g.moveTo(0, 650); g.lineTo(170, 625); g.lineTo(350, 662); g.lineTo(550, 625);
-    g.lineTo(780, 685); g.lineTo(1000, 640); g.lineTo(1210, 665); g.lineTo(1410, 620); g.lineTo(1600, 653);
-    g.strokePath();
-    const p1 = this.add.image(245, 650, `${playerById(1).tankTexture}-preview`).setOrigin(0.5, 1).setScale(1.2).setDepth(2);
-    const p2 = this.add.image(1355, 645, `${playerById(2).tankTexture}-preview`).setOrigin(0.5, 1).setScale(1.2).setDepth(2);
-    this.tweens.add({ targets: p1, y: 645, duration: 900, yoyo: true, repeat: -1, ease: "Sine.InOut" });
-    this.tweens.add({ targets: p2, y: 640, duration: 900, delay: 230, yoyo: true, repeat: -1, ease: "Sine.InOut" });
   }
 
   private makeButton(x: number, y: number, w: number, h: number, label: string, callback: () => void, color: number): void {
