@@ -4,6 +4,7 @@ import { BattleScene } from "./scenes/BattleScene";
 import { BuildScene } from "./scenes/BuildScene";
 import { MenuScene } from "./scenes/MenuScene";
 import { MineScene } from "./scenes/MineScene";
+import { InstructionsScene } from "./scenes/InstructionsScene";
 import { PreloadScene } from "./scenes/PreloadScene";
 import { ResultScene } from "./scenes/ResultScene";
 import { TankHangarScene } from "./scenes/TankHangarScene";
@@ -27,5 +28,5 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
     activePointers: 2,
     mouse: { preventDefaultWheel: true },
   },
-  scene: [PreloadScene, MenuScene, TankHangarScene, MineScene, BuildScene, BattleScene, ResultScene],
+  scene: [PreloadScene, MenuScene, InstructionsScene, TankHangarScene, MineScene, BuildScene, BattleScene, ResultScene],
 };

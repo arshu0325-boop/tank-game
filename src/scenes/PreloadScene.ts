@@ -7,6 +7,9 @@ export class PreloadScene extends Phaser.Scene {
 
   preload(): void {
     this.load.image("tankcraft-logo", "/assets/tankcraft-logo.png");
+    this.load.image("opening-background", "/assets/opening-background.png");
+    this.load.image("opening-night", "/assets/opening-night.png");
+    this.load.image("opening-day", "/assets/opening-day.png");
   }
 
   create(): void {
