@@ -1,5 +1,5 @@
 {
-  "name": "tank-game",
+  "name": "build-blast",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -11,8 +11,5 @@
   "devDependencies": {
     "typescript": "~6.0.3",
     "vite": "^8.3.4"
-  },
-  "dependencies": {
-    "phaser": "^4.2.1"
   }
 }
