@@ -6,9 +6,13 @@ interface MineCell {
   col: number;
   row: number;
   type: TileType;
-  ore?: "iron";
+  ore?: "iron" | "coal";
+  hp: number;
+  maxHp: number;
   image: Phaser.GameObjects.Image;
+  crack?: Phaser.GameObjects.Graphics;
 }
+
 
 const MINE_ORIGIN_Y = 250;
 const MINE_SECONDS = 23;
@@ -24,7 +28,22 @@ export class MineScene extends Phaser.Scene {
   private p2Label!: Phaser.GameObjects.Text;
   private resourceText!: Phaser.GameObjects.Text;
   private hintText!: Phaser.GameObjects.Text;
+  private getBlockHp(type: TileType): number {
+  switch (type) {
+    case "dirt":
+      return 2;
 
+    case "stone":
+      return 4;
+
+    case "obsidian":
+      return 10;
+
+    default:
+      return 1;
+  }
+}
+  
   constructor() {
     super("MineScene");
   }
@@ -65,7 +84,7 @@ export class MineScene extends Phaser.Scene {
       surfaceRows.push(surface);
       for (let row = surface; row < MINE_ROWS; row++) {
         let type: TileType;
-        let ore: "iron" | undefined;
+        let ore: "iron" | "coal" | undefined;
         const depth = row - surface;
         if (depth < 5) {
           type = "dirt";
@@ -82,7 +101,19 @@ export class MineScene extends Phaser.Scene {
           type,
           { surface: row === surface, ore },
         ).setDepth(4);
-        this.cells.set(this.cellKey(col, row), { col, row, type, ore, image });
+        const maxHp = this.getBlockHp(type);
+        const crack = this.add.graphics().setDepth(6);
+
+        this.cells.set(this.cellKey(col, row), {
+          col,
+          row,
+          type,
+          ore,
+          hp: maxHp,
+          maxHp,
+          image,
+          crack,
+        });
       }
     }
 
@@ -134,29 +165,114 @@ export class MineScene extends Phaser.Scene {
   }
 
   private handlePointerDown(pointer: Phaser.Input.Pointer): void {
-    if (this.transitioning || pointer.y < MINE_ORIGIN_Y) return;
-    const col = Math.floor(pointer.x / TILE_SIZE);
-    const row = Math.floor((pointer.y - MINE_ORIGIN_Y) / TILE_SIZE);
-    if (col < 0 || col >= MINE_COLS || row < 0 || row >= MINE_ROWS) return;
-    const key = this.cellKey(col, row);
-    const cell = this.cells.get(key);
-    if (!cell) return;
+  if (this.transitioning || pointer.y < MINE_ORIGIN_Y) return;
 
-    const id: PlayerId = pointer.x < GAME_WIDTH / 2 ? 1 : 2;
-    const player = playerById(id);
-    player.inventory[cell.type] += 1;
-    if (cell.ore === "iron") player.iron += 1;
-    cell.image.destroy();
-    this.cells.delete(key);
+  const col = Math.floor(pointer.x / TILE_SIZE);
+  const row = Math.floor(
+    (pointer.y - MINE_ORIGIN_Y) / TILE_SIZE
+  );
 
-    const itemLabel = cell.ore === "iron" ? `+1 ${cell.type}  +1 iron` : `+1 ${cell.type}`;
-    const pop = this.add.text(pointer.x, pointer.y - 5, itemLabel, {
-      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "17px", color: id === 1 ? "#73d8ff" : "#ff9a8c",
-      stroke: "#151b20", strokeThickness: 4,
-    }).setOrigin(0.5).setDepth(35);
-    this.tweens.add({ targets: pop, y: pop.y - 36, alpha: 0, duration: 680, onComplete: () => pop.destroy() });
-    this.updateHud();
+  if (
+    col < 0 ||
+    col >= MINE_COLS ||
+    row < 0 ||
+    row >= MINE_ROWS
+  ) {
+    return;
   }
+
+  const key = this.cellKey(col, row);
+  const cell = this.cells.get(key);
+
+  if (!cell) return;
+
+  // P1 can only mine the left half.
+  // P2 can only mine the right half.
+  const id: PlayerId =
+    pointer.x < GAME_WIDTH / 2 ? 1 : 2;
+
+  if (
+    (id === 1 && pointer.x >= GAME_WIDTH / 2) ||
+    (id === 2 && pointer.x < GAME_WIDTH / 2)
+  ) {
+    return;
+  }
+
+  // Only the exposed block can be mined.
+  // A block with another block directly above it is buried.
+  const blockAbove = this.cells.get(
+    this.cellKey(col, row - 1)
+  );
+
+  if (blockAbove) {
+    this.showMiningMessage(
+      pointer.x,
+      pointer.y,
+      "Mine the block above first!",
+      "#ffd75a"
+    );
+
+    return;
+  }
+
+  // Damage the block.
+  cell.hp--;
+
+  // Make damaged blocks slightly transparent.
+  const healthRatio = cell.hp / cell.maxHp;
+
+// Make the block darker as it takes damage.
+cell.image.setAlpha();
+
+cell.image.setTint();
+this.drawMiningCracks(cell);
+
+  // Show remaining HP.
+  this.showMiningMessage(
+    pointer.x,
+    pointer.y,
+    cell.hp > 0
+      ? `${cell.hp} HP left`
+      : "BREAK!",
+    id === 1 ? "#73d8ff" : "#ff9a8c"
+  );
+
+  // The block hasn't broken yet.
+  if (cell.hp > 0) {
+    return;
+  }
+
+  // The block has broken.
+  const player = playerById(id);
+
+  player.inventory[cell.type] += 1;
+
+  if (cell.ore === "iron") {
+    player.iron += 1;
+  }
+
+  // Remove the block visually.
+  cell.image.destroy();
+  cell.crack?.destroy();
+
+  // Remove the block from the mine.
+  this.cells.delete(key);
+
+  // Show reward.
+  const itemLabel =
+    cell.ore === "iron"
+      ? `+1 ${cell.type}  +1 iron`
+      : `+1 ${cell.type}`;
+
+  this.showMiningMessage(
+    pointer.x,
+    pointer.y,
+    itemLabel,
+    id === 1 ? "#73d8ff" : "#ff9a8c"
+  );
+
+  this.updateHud();
+}  
 
   private updateHud(): void {
     this.hudGraphics.clear();
@@ -183,6 +299,117 @@ export class MineScene extends Phaser.Scene {
     this.hudGraphics.lineStyle(2, 0x090d10, 1).strokeRect(x, y, w, h);
     this.hudGraphics.fillStyle(color, 1).fillRect(x + 2, y + 2, Math.max(0, (w - 4) * ratio), h - 4);
   }
+  private drawMiningCracks(cell: MineCell): void {
+  if (!cell.crack) return;
+
+  const crack = cell.crack;
+  crack.clear();
+
+  if (cell.hp >= cell.maxHp) {
+    return;
+  }
+
+  const damageRatio =
+    1 - cell.hp / cell.maxHp;
+
+  const x =
+    cell.col * TILE_SIZE;
+
+  const y =
+    MINE_ORIGIN_Y +
+    cell.row * TILE_SIZE;
+
+  crack.lineStyle(
+    3,
+    0x151515,
+    0.9
+  );
+
+  // Main crack
+  crack.beginPath();
+  crack.moveTo(
+    x + TILE_SIZE * 0.25,
+    y + TILE_SIZE * 0.15
+  );
+  crack.lineTo(
+    x + TILE_SIZE * 0.45,
+    y + TILE_SIZE * 0.42
+  );
+  crack.lineTo(
+    x + TILE_SIZE * 0.35,
+    y + TILE_SIZE * 0.70
+  );
+  crack.lineTo(
+    x + TILE_SIZE * 0.60,
+    y + TILE_SIZE * 0.90
+  );
+  crack.strokePath();
+
+  // Second crack for heavier damage
+  if (damageRatio >= 0.5) {
+    crack.beginPath();
+    crack.moveTo(
+      x + TILE_SIZE * 0.65,
+      y + TILE_SIZE * 0.15
+    );
+    crack.lineTo(
+      x + TILE_SIZE * 0.55,
+      y + TILE_SIZE * 0.40
+    );
+    crack.lineTo(
+      x + TILE_SIZE * 0.75,
+      y + TILE_SIZE * 0.62
+    );
+    crack.strokePath();
+  }
+
+  // Third crack when almost broken
+  if (damageRatio >= 0.75) {
+    crack.beginPath();
+    crack.moveTo(
+      x + TILE_SIZE * 0.15,
+      y + TILE_SIZE * 0.55
+    );
+    crack.lineTo(
+      x + TILE_SIZE * 0.40,
+      y + TILE_SIZE * 0.50
+    );
+    crack.lineTo(
+      x + TILE_SIZE * 0.80,
+      y + TILE_SIZE * 0.80
+    );
+    crack.strokePath();
+  }
+}
+  private showMiningMessage(
+  x: number,
+  y: number,
+  message: string,
+  color: string
+): void {
+  const pop = this.add.text(
+    x,
+    y - 5,
+    message,
+    {
+      fontFamily: "Arial Black, Arial, sans-serif",
+      fontSize: "16px",
+      color,
+      stroke: "#374047",
+      strokeThickness: 4,
+    }
+  )
+    .setOrigin(0.5)
+    .setDepth(35);
+
+  this.tweens.add({
+    targets: pop,
+    y: pop.y - 28,
+    alpha: 0,
+    duration: 500,
+    onComplete: () => pop.destroy(),
+  });
+}
 
   private panelTitleStyle(): Phaser.Types.GameObjects.Text.TextStyle {
     return { fontFamily: "Arial Black, Arial, sans-serif", fontSize: "24px", color: "#f8f6ec", stroke: "#151b23", strokeThickness: 5 };
