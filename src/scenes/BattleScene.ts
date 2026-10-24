@@ -1,13 +1,14 @@
 import Phaser from "phaser";
 import {
   BLOCK_HP, BATTLE_WORLD_WIDTH, BUILD_COLS, BUILD_ORIGIN_X, BUILD_ROWS, GAME_HEIGHT, GAME_WIDTH, TANK_X,
-  TILE_SIZE, addBlockImage, baseTerrainY, clamp, distance, drawSky,
+  TILE_SIZE, addBlockImage, clamp, distance,
 } from "../grid";
 import { gameState, MAX_HP, otherPlayerId, playerById, type PlayerId, type TileType, type WeaponType } from "../state";
 
 const TERRAIN_STEP = 8;
-const BATTLE_P1_X = 445;
-const BATTLE_P2_X = 1755;
+// Keep the opening distance inside the missile's normal-power flight range.
+const BATTLE_P1_X = 650;
+const BATTLE_P2_X = 1550;
 const BATTLE_P1_BUILD_OFFSET = BATTLE_P1_X - TANK_X[1];
 const BATTLE_P2_BUILD_OFFSET = BATTLE_P2_X - TANK_X[2];
 const BATTLE_BASE_ZOOM = 1;
@@ -18,7 +19,7 @@ const TANK_MOVE_SPEED = 190; // pixels per second
 const TANK_FUEL_PER_PIXEL = 0.04; // 4 fuel per 100 pixels
 const WEAPONS: Record<WeaponType, { label: string; damage: number; radius: number; speed: number; gravity: number; color: number }> = {
   shell: { label: "TANK SHOT", damage: 1, radius: 23, speed: 660, gravity: 520, color: 0xffefb0 },
-  missile: { label: "MISSILE", damage: 10, radius: 72, speed: 520, gravity: 390, color: 0xff9a38 },
+  missile: { label: "MISSILE", damage: 10, radius: 72, speed: 700, gravity: 390, color: 0xff9a38 },
   boomerang: { label: "BOOMERANG", damage: 2, radius: 31, speed: 700, gravity: 205, color: 0x74f2ff },
 };
 
@@ -28,7 +29,9 @@ interface BattleBlock {
   row: number;
   type: TileType;
   hp: number;
+  maxHp: number;
   image: Phaser.GameObjects.Image;
+  crack: Phaser.GameObjects.Graphics;
   x: number;
   y: number;
 }
@@ -65,7 +68,6 @@ export class BattleScene extends Phaser.Scene {
   private hudGraphics!: Phaser.GameObjects.Graphics;
   private blocks: BattleBlock[] = [];
   private tanks!: Record<PlayerId, Phaser.GameObjects.Image>;
-  private tankGlows?: Record<PlayerId, Phaser.GameObjects.Image>;
   private uiCamera!: Phaser.Cameras.Scene2D.Camera;
   private readonly mainCameraIgnored = new WeakSet<Phaser.GameObjects.GameObject>();
   private readonly uiCameraIgnored = new WeakSet<Phaser.GameObjects.GameObject>();
@@ -114,7 +116,6 @@ export class BattleScene extends Phaser.Scene {
     this.firedThisTurn = false;
     this.lastShotAt = Number.NEGATIVE_INFINITY;
     this.fireButtonPointerId = null;
-    this.tankGlows = undefined;
     this.resolving = false;
     this.fireMessage = "";
     this.isAiming = false;
@@ -127,8 +128,10 @@ export class BattleScene extends Phaser.Scene {
 
     gameState.selectedWeapon = "shell";
     gameState.round = 1;
-    drawSky(this, false, BATTLE_WORLD_WIDTH);
-    this.drawArenaGrid();
+    this.add.image(BATTLE_WORLD_WIDTH / 2, GAME_HEIGHT / 2,
+      gameState.nightMode ? "battle-night-background" : "battle-day-background")
+      .setDisplaySize(BATTLE_WORLD_WIDTH, GAME_HEIGHT)
+      .setDepth(-10);
     this.createTerrain();
     this.drawTerrain();
     const p1FacesLeftByDefault = playerById(1).tankTexture === "tank-red";
@@ -139,13 +142,6 @@ export class BattleScene extends Phaser.Scene {
     };
     this.cannonGraphics = this.add.graphics().setDepth(8);
     this.createBattleBlocks();
-    if (gameState.nightMode) {
-      this.add.rectangle(BATTLE_WORLD_WIDTH / 2, GAME_HEIGHT / 2, BATTLE_WORLD_WIDTH, GAME_HEIGHT, 0x09134c, 0.48).setDepth(14);
-      this.tankGlows = {
-        1: this.makeTankGlow(1, 0x28c5ff),
-        2: this.makeTankGlow(2, 0xff5968),
-      };
-    }
     this.aimGraphics = this.add.graphics().setDepth(15);
     this.createHud();
     this.uiCamera = this.cameras.add(0, 0, GAME_WIDTH, GAME_HEIGHT);
@@ -205,7 +201,6 @@ export class BattleScene extends Phaser.Scene {
 
     this.tanks[1].y = this.terrainAt(this.tanks[1].x);
     this.tanks[2].y = this.terrainAt(this.tanks[2].x);
-    this.syncTankGlows();
     if (!this.resolving && !this.isAiming) {
       const zoom = this.battleCameraZoomForTanks();
       this.cameras.main.setZoom(zoom);
@@ -308,67 +303,88 @@ export class BattleScene extends Phaser.Scene {
 
   private createTerrain(): void {
     this.terrain = [];
-    for (let x = 0; x <= BATTLE_WORLD_WIDTH; x += TERRAIN_STEP) this.terrain.push(baseTerrainY(x, BATTLE_WORLD_WIDTH));
-    this.terrainGraphics = this.add.graphics().setDepth(2);
-  }
-
-  private makeTankGlow(id: PlayerId, color: number): Phaser.GameObjects.Image {
-    const tank = this.tanks[id];
-    const glow = this.add.image(tank.x, tank.y - 30, "night-halo")
-      .setTint(color)
-      .setDisplaySize(200, 108)
-      .setBlendMode(Phaser.BlendModes.ADD)
-      .setAlpha(0.22)
-      .setDepth(14.5);
-    this.tweens.add({ targets: glow, alpha: 0.12, duration: 1100, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
-    return glow;
-  }
-
-  private syncTankGlows(): void {
-    if (!this.tankGlows) return;
-    for (const id of [1, 2] as PlayerId[]) {
-      this.tankGlows[id].setPosition(this.tanks[id].x, this.tanks[id].y - 30);
+    for (let x = 0; x <= BATTLE_WORLD_WIDTH; x += TERRAIN_STEP) {
+      const valley = 220 * Math.exp(-Math.pow((x - 1100) / 250, 2));
+      const leftRidge = 30 * Math.exp(-Math.pow((x - 620) / 245, 2));
+      const rightRidge = 48 * Math.exp(-Math.pow((x - 1570) / 255, 2));
+      const unevenSoil = 5 * Math.sin(x / 57) + 3 * Math.sin(x / 23) + 2 * Math.sin(x / 13);
+      this.terrain.push(clamp(430 + valley + leftRidge + rightRidge + unevenSoil, 410, 700));
     }
+    this.terrainGraphics = this.add.graphics().setDepth(2);
   }
 
   private drawTerrain(): void {
     const g = this.terrainGraphics;
     g.clear();
-    const drawLayer = (offset: number, color: number): void => {
+    const night = gameState.nightMode;
+    const drawBand = (topOffset: number, bottomOffset: number | null, color: number): void => {
       g.fillStyle(color, 1);
       g.beginPath();
       for (let i = 0; i < this.terrain.length; i++) {
         const x = i * TERRAIN_STEP;
-        const y = Math.min(GAME_HEIGHT, this.terrain[i] + offset);
+        const y = Math.max(0, Math.min(GAME_HEIGHT, this.terrain[i] + topOffset));
         if (i === 0) g.moveTo(x, y); else g.lineTo(x, y);
       }
-      g.lineTo(BATTLE_WORLD_WIDTH, GAME_HEIGHT);
-      g.lineTo(0, GAME_HEIGHT);
+      if (bottomOffset === null) {
+        g.lineTo(BATTLE_WORLD_WIDTH, GAME_HEIGHT);
+        g.lineTo(0, GAME_HEIGHT);
+      } else {
+        for (let i = this.terrain.length - 1; i >= 0; i--) {
+          const x = i * TERRAIN_STEP;
+          const y = Math.min(GAME_HEIGHT, this.terrain[i] + bottomOffset);
+          g.lineTo(x, y);
+        }
+      }
       g.closePath();
       g.fillPath();
     };
-    drawLayer(0, 0x92572f);
-    g.lineStyle(7, 0x4c8a2d, 1);
+
+    // Layered soil and rock make the valley read like a dug-out battlefield.
+    drawBand(250, null, night ? 0x252b49 : 0x363b50);
+    drawBand(88, 250, night ? 0x49383d : 0x65402d);
+    drawBand(0, 88, night ? 0x65434a : 0x8b512d);
+    drawBand(0, 12, night ? 0x3f713d : 0x57933a);
+
+    // Pixel flecks and angular stones break up the broad earth bands.
+    for (let x = 18; x < BATTLE_WORLD_WIDTH; x += 31) {
+      const surfaceY = this.terrainAt(x);
+      for (let depth = 28; depth < 430; depth += 29) {
+        const y = surfaceY + depth + Math.sin((x + depth) * 0.09) * 4;
+        if (y > GAME_HEIGHT - 7) continue;
+        const seed = Math.abs(Math.floor(x * 13 + depth * 7));
+        const size = 2 + (seed % 5);
+        if (depth < 100) {
+          g.fillStyle((seed % 2 === 0 ? (night ? 0x98624b : 0xc17a42) : (night ? 0x372f3a : 0x633b29)), 0.72);
+          g.fillRect(x + (seed % 11) - 5, y, size + 2, Math.max(2, size - 1));
+        } else if (depth < 250) {
+          g.fillStyle(seed % 2 === 0 ? (night ? 0x9b674f : 0xa96537) : (night ? 0x302b39 : 0x51352c), 0.75);
+          g.fillRect(x + (seed % 9) - 4, y, size + 4, size);
+        } else {
+          g.fillStyle(seed % 2 === 0 ? (night ? 0x707b98 : 0x818b91) : (night ? 0x292840 : 0x272d3d), 0.76);
+          g.fillRect(x + (seed % 13) - 6, y, size + 3, size + 2);
+        }
+        if (seed % 4 === 0) {
+          g.fillStyle(night ? 0x31283b : 0x382b2a, 0.58);
+          g.fillRect(x + 5, y + 5, size + 5, 2);
+        }
+      }
+    }
+
+    // A bright grass cap and darker underside follow the sculpted ridge.
+    g.lineStyle(11, night ? 0x37683b : 0x477a35, 1);
     g.beginPath();
     for (let i = 0; i < this.terrain.length; i++) {
       const x = i * TERRAIN_STEP;
       if (i === 0) g.moveTo(x, this.terrain[i]); else g.lineTo(x, this.terrain[i]);
     }
     g.strokePath();
-    g.lineStyle(2, 0xc2eb61, 0.95);
+    g.lineStyle(4, night ? 0x87c954 : 0xb4e65b, 1);
     g.beginPath();
     for (let i = 0; i < this.terrain.length; i++) {
       const x = i * TERRAIN_STEP;
-      if (i === 0) g.moveTo(x, this.terrain[i] - 3); else g.lineTo(x, this.terrain[i] - 3);
+      if (i === 0) g.moveTo(x, this.terrain[i] - 2); else g.lineTo(x, this.terrain[i] - 2);
     }
     g.strokePath();
-  }
-
-  private drawArenaGrid(): void {
-    const grid = this.add.graphics().setDepth(1);
-    grid.lineStyle(1, 0xe6f5ff, 0.12);
-    for (let x = 0; x <= BATTLE_WORLD_WIDTH; x += 40) grid.lineBetween(x, 0, x, GAME_HEIGHT);
-    for (let y = 0; y <= GAME_HEIGHT; y += 40) grid.lineBetween(0, y, BATTLE_WORLD_WIDTH, y);
   }
 
   private createBattleBlocks(): void {
@@ -379,8 +395,41 @@ export class BattleScene extends Phaser.Scene {
         const groundY = this.terrainAt(id === 1 ? BATTLE_P1_X : BATTLE_P2_X);
         const y = groundY - (BUILD_ROWS - placed.row - 0.5) * TILE_SIZE;
         const image = addBlockImage(this, x, y, placed.type, { size: TILE_SIZE }).setDepth(6);
-        this.blocks.push({ ownerId: id, col: placed.col, row: placed.row, type: placed.type, hp: BLOCK_HP[placed.type], image, x, y });
+        const crack = this.add.graphics().setPosition(x, y).setDepth(6.5);
+        this.blocks.push({ ownerId: id, col: placed.col, row: placed.row, type: placed.type, hp: BLOCK_HP[placed.type], maxHp: BLOCK_HP[placed.type], image, crack, x, y });
       }
+    }
+  }
+
+  private drawBattleBlockCracks(block: BattleBlock): void {
+    const crack = block.crack;
+    crack.clear();
+    if (block.hp >= block.maxHp) return;
+
+    const damageRatio = 1 - block.hp / block.maxHp;
+    crack.lineStyle(3, gameState.nightMode ? 0x17172a : 0x151515, 0.94);
+    crack.beginPath();
+    crack.moveTo(-10, -14);
+    crack.lineTo(-2, -4);
+    crack.lineTo(-7, 3);
+    crack.lineTo(2, 14);
+    crack.strokePath();
+
+    if (damageRatio >= 0.5) {
+      crack.beginPath();
+      crack.moveTo(10, -14);
+      crack.lineTo(3, -5);
+      crack.lineTo(9, 2);
+      crack.lineTo(4, 9);
+      crack.strokePath();
+    }
+    if (damageRatio >= 0.75) {
+      crack.beginPath();
+      crack.moveTo(-15, 6);
+      crack.lineTo(-5, 2);
+      crack.lineTo(1, 9);
+      crack.lineTo(12, 5);
+      crack.strokePath();
     }
   }
 
@@ -561,14 +610,14 @@ export class BattleScene extends Phaser.Scene {
     this.aimGraphics.clear();
     const id = gameState.currentPlayer;
     const origin = this.muzzlePosition(id);
-    this.drawTrajectory(origin.x, origin.y, this.currentAimAngle, this.power, 0xffe7a5, 0.28);
+    this.drawTrajectory(origin.x, origin.y, this.currentAimAngle, this.power, 0x79f4ff, 0.56);
   }
 
   private drawTrajectoryPreview(): void {
     this.aimGraphics.clear();
     const id = gameState.currentPlayer;
     const origin = this.muzzlePosition(id);
-    this.drawTrajectory(origin.x, origin.y, this.currentAimAngle, this.effectivePower(), 0x8cffb5, 0.9);
+    this.drawTrajectory(origin.x, origin.y, this.currentAimAngle, this.effectivePower(), 0x91ffd0, 1);
     const pointer = this.input.activePointer;
     const aimPoint = this.battleWorldPoint(pointer);
     this.aimGraphics.lineStyle(2, 0xfff6d1, 0.9);
@@ -608,7 +657,8 @@ export class BattleScene extends Phaser.Scene {
     let returning = false;
     this.aimGraphics.lineStyle(2, color, alpha);
 
-    for (let i = 1; i <= (boomerang ? 100 : 28); i++) {
+    const sampleCount = boomerang ? 100 : gameState.selectedWeapon === "missile" ? 96 : 48;
+    for (let i = 1; i <= sampleCount; i++) {
       const t = 0.055;
       if (boomerang && !returning && (dir === 1 ? x >= enemyX + 70 : x <= enemyX - 70)) returning = true;
       if (boomerang && returning) {
@@ -634,7 +684,11 @@ export class BattleScene extends Phaser.Scene {
       );
       if (hitsBlock) break;
 
-      if (i % 2 === 0) this.aimGraphics.strokeCircle(x, y, 2.5);
+      if (i % 2 === 0) {
+        this.aimGraphics.fillStyle(color, alpha * 0.28).fillCircle(x, y, 6);
+        this.aimGraphics.fillStyle(color, alpha).fillCircle(x, y, 3.8);
+        this.aimGraphics.fillStyle(0xffffff, alpha * 0.92).fillCircle(x, y, 1.45);
+      }
       if (returning && distance(x, y, enemyX, this.terrainAt(enemyX) - 30) < 29) break;
     }
   }
@@ -742,8 +796,9 @@ export class BattleScene extends Phaser.Scene {
     const travelAngle = Math.atan2(projectile.vy, projectile.vx);
     projectile.image.setRotation(travelAngle + (projectile.weapon === "boomerang" ? projectile.age * 7 : 0));
     projectile.glowImage?.setPosition(projectile.x, projectile.y).setRotation(projectile.image.rotation);
-    while (projectile.weapon !== "shell" && projectile.trailClock >= 0.024) {
-      projectile.trailClock -= 0.024;
+    const trailStep = projectile.weapon === "shell" ? 0.035 : 0.024;
+    while (projectile.trailClock >= trailStep) {
+      projectile.trailClock -= trailStep;
       this.emitProjectileTrail(projectile);
     }
 
@@ -774,28 +829,32 @@ export class BattleScene extends Phaser.Scene {
     const length = Math.max(1, Math.hypot(projectile.vx, projectile.vy));
     const backX = -projectile.vx / length;
     const backY = -projectile.vy / length;
-    const isFire = projectile.weapon !== "boomerang";
-    const color = projectile.weapon === "boomerang"
-      ? (Math.random() > 0.5 ? 0x82f6ff : 0x5a9cff)
-      : (Math.random() > 0.42 ? 0xffb21f : 0xff6926);
-    const size = projectile.weapon === "missile" ? Phaser.Math.Between(4, 9) : Phaser.Math.Between(3, 6);
+    const isSmoke = projectile.weapon === "shell";
+    const isFire = projectile.weapon === "missile";
+    const color = isSmoke
+      ? Phaser.Utils.Array.GetRandom([0x544d49, 0x71675f, 0x95877b])
+      : projectile.weapon === "boomerang"
+        ? Phaser.Utils.Array.GetRandom([0x82f6ff, 0x5a9cff, 0xc5ffff])
+        : Phaser.Utils.Array.GetRandom([0xffb21f, 0xff6926, 0xffe66e]);
+    const size = isSmoke ? Phaser.Math.Between(5, 9)
+      : projectile.weapon === "missile" ? Phaser.Math.Between(5, 10) : Phaser.Math.Between(4, 7);
     const particle = this.add.circle(
-      projectile.x + backX * 18 + Phaser.Math.Between(-3, 3),
-      projectile.y + backY * 18 + Phaser.Math.Between(-3, 3),
+      projectile.x + backX * (isSmoke ? 22 : 18) + Phaser.Math.Between(-4, 4),
+      projectile.y + backY * (isSmoke ? 22 : 18) + Phaser.Math.Between(-4, 4),
       size,
       color,
-      isFire ? 0.94 : 0.82,
+      isSmoke ? 0.58 : isFire ? 0.98 : 0.86,
     ).setDepth(17);
-    if (gameState.nightMode) particle.setBlendMode(Phaser.BlendModes.ADD);
+    if (gameState.nightMode && !isSmoke) particle.setBlendMode(Phaser.BlendModes.ADD);
     if (isFire && Math.random() > 0.5) particle.setStrokeStyle(2, 0xffed75, 0.8);
     this.tweens.add({
       targets: particle,
-      x: particle.x + backX * Phaser.Math.Between(22, 42),
-      y: particle.y + backY * 18 + Phaser.Math.Between(-11, 11),
+      x: particle.x + backX * Phaser.Math.Between(isSmoke ? 38 : 24, isSmoke ? 68 : 48),
+      y: particle.y + backY * (isSmoke ? 42 : 20) + Phaser.Math.Between(isSmoke ? -28 : -12, isSmoke ? 12 : 12),
       alpha: 0,
-      scale: 0.12,
-      duration: projectile.weapon === "missile" ? 330 : 220,
-      ease: "Cubic.easeOut",
+      scale: isSmoke ? Phaser.Math.FloatBetween(2, 3) : 0.12,
+      duration: isSmoke ? Phaser.Math.Between(650, 950) : projectile.weapon === "missile" ? 480 : 360,
+      ease: isSmoke ? "Sine.easeOut" : "Cubic.easeOut",
       onComplete: () => particle.destroy(),
     });
   }
@@ -812,9 +871,23 @@ export class BattleScene extends Phaser.Scene {
       const blockDamage = Math.max(1, Math.round(projectile.damage * falloff));
       block.hp -= blockDamage;
       block.image.setAlpha(clamp(0.48 + 0.52 * (block.hp / BLOCK_HP[block.type]), 0.18, 1));
-      this.emitBlockParticles(block.x, block.y, block.type === "dirt" ? 0xc8915f : block.type === "stone" ? 0xc4d0d5 : 0xb7a4e4, block.hp <= 0 ? 13 : 3);
+      this.drawBattleBlockCracks(block);
+      this.emitBlockParticles(block.x, block.y, block.type === "dirt" ? 0xc8915f : block.type === "stone" ? 0xc4d0d5 : 0xb7a4e4, block.hp <= 0 ? 26 : 9);
+      if (block.hp > 0) {
+        this.tweens.add({ targets: [block.image, block.crack], angle: { from: -5, to: 5 }, yoyo: true, duration: 70, repeat: 1 });
+      }
       if (block.hp <= 0) {
-        block.image.destroy();
+        this.tweens.add({
+          targets: [block.image, block.crack],
+          scale: 0.12,
+          angle: Phaser.Math.Between(-12, 12),
+          alpha: 0,
+          duration: 240,
+          onComplete: () => {
+            block.image.destroy();
+            block.crack.destroy();
+          },
+        });
         this.blocks = this.blocks.filter((entry) => entry !== block);
         const ownerStructure = playerById(block.ownerId).structure;
         const index = ownerStructure.findIndex((entry) => entry.col === block.col && entry.row === block.row);
@@ -846,17 +919,21 @@ export class BattleScene extends Phaser.Scene {
         ? "BOTH TANKS DESTROYED!"
         : `P${eliminatedIds[0]} TANK DESTROYED!`;
       eliminatedIds.forEach((id) => this.showTankElimination(id));
+      this.zoomToElimination(eliminatedIds);
     }
 
     this.showExplosion(x, y, projectile.radius, WEAPONS[projectile.weapon].color);
-    this.cameras.main.shake(240, directTank ? 0.012 : 0.008);
+    this.cameras.main.shake(
+      eliminatedIds.length > 0 ? 950 : 240,
+      eliminatedIds.length > 0 ? 0.035 : directTank ? 0.012 : 0.008,
+    );
     projectile.image.destroy();
     projectile.glowImage?.destroy();
     this.activeProjectile = null;
     this.cameras.main.stopFollow();
     this.updateHud();
 
-    this.time.delayedCall(eliminatedIds.length > 0 ? 1550 : 420, () => {
+    this.time.delayedCall(eliminatedIds.length > 0 ? 4500 : 420, () => {
       const p1 = playerById(1);
       const p2 = playerById(2);
       if (p1.hp <= 0 || p2.hp <= 0) {
@@ -937,12 +1014,6 @@ export class BattleScene extends Phaser.Scene {
     const y = groundY - 27;
 
     this.showDeathBlast(x, y);
-    this.cameras.main.shake(620, 0.022);
-    const glow = this.tankGlows?.[id];
-    if (glow) {
-      this.tweens.killTweensOf(glow);
-      this.tweens.add({ targets: glow, alpha: 0, duration: 240 });
-    }
 
     this.tweens.add({
       targets: tank,
@@ -968,73 +1039,113 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private showDeathBlast(x: number, y: number): void {
-    const outer = this.add.circle(x, y, 46, 0xff771c, 0.78)
+    const outer = this.add.circle(x, y, 70, 0xff771c, 0.82)
       .setBlendMode(Phaser.BlendModes.ADD)
       .setDepth(20)
-      .setScale(0.18);
-    const inner = this.add.circle(x, y, 27, 0xffef8a, 0.98)
+      .setScale(0.1);
+    const inner = this.add.circle(x, y, 38, 0xffef8a, 1)
       .setBlendMode(Phaser.BlendModes.ADD)
       .setDepth(21)
-      .setScale(0.12);
+      .setScale(0.08);
     this.tweens.add({
       targets: outer,
-      scale: 2.8,
+      scale: 4.2,
       alpha: 0,
-      duration: 620,
+      duration: 1050,
       ease: "Cubic.easeOut",
       onComplete: () => outer.destroy(),
     });
     this.tweens.add({
       targets: inner,
-      scale: 1.7,
+      scale: 2.3,
       alpha: 0,
-      duration: 300,
+      duration: 430,
       ease: "Cubic.easeOut",
       onComplete: () => inner.destroy(),
     });
 
     const fireColors = [0xfff0a0, 0xffa324, 0xff5728, 0xffd24a];
-    for (let i = 0; i < 30; i++) {
-      const angle = (Math.PI * 2 * i) / 30 + Phaser.Math.FloatBetween(-0.12, 0.12);
-      const distance = Phaser.Math.Between(55, 150);
+    for (let i = 0; i < 72; i++) {
+      const angle = (Math.PI * 2 * i) / 72 + Phaser.Math.FloatBetween(-0.16, 0.16);
+      const distance = Phaser.Math.Between(100, 320);
       const spark = this.add.circle(
-        x + Phaser.Math.Between(-14, 14),
-        y + Phaser.Math.Between(-12, 12),
-        Phaser.Math.Between(3, 8),
+        x + Phaser.Math.Between(-24, 24),
+        y + Phaser.Math.Between(-20, 20),
+        Phaser.Math.Between(5, 13),
         fireColors[i % fireColors.length],
         1,
       ).setBlendMode(Phaser.BlendModes.ADD).setDepth(21);
       this.tweens.add({
         targets: spark,
         x: x + Math.cos(angle) * distance,
-        y: y + Math.sin(angle) * distance - Phaser.Math.Between(5, 45),
+        y: y + Math.sin(angle) * distance - Phaser.Math.Between(15, 90),
         scale: 0.12,
         alpha: 0,
-        duration: Phaser.Math.Between(420, 760),
+        duration: Phaser.Math.Between(650, 1250),
         ease: "Cubic.easeOut",
         onComplete: () => spark.destroy(),
       });
     }
+
+    for (let i = 0; i < 20; i++) {
+      const smoke = this.add.circle(
+        x + Phaser.Math.Between(-42, 42),
+        y + Phaser.Math.Between(-24, 24),
+        Phaser.Math.Between(12, 24),
+        i % 2 ? 0x3a3030 : 0x57403a,
+        0.64,
+      ).setDepth(19);
+      this.tweens.add({
+        targets: smoke,
+        x: smoke.x + Phaser.Math.Between(-95, 95),
+        y: smoke.y - Phaser.Math.Between(90, 230),
+        scale: Phaser.Math.FloatBetween(1.6, 2.4),
+        alpha: 0,
+        duration: Phaser.Math.Between(900, 1550),
+        ease: "Sine.easeOut",
+        onComplete: () => smoke.destroy(),
+      });
+    }
+  }
+
+  private zoomToElimination(ids: PlayerId[]): void {
+    const camera = this.cameras.main;
+    const focusX = ids.reduce((sum, id) => sum + this.tanks[id].x, 0) / ids.length;
+    const focusY = ids.reduce((sum, id) => sum + this.terrainAt(this.tanks[id].x) - 34, 0) / ids.length;
+    const zoom = 1.5;
+    const viewWidth = GAME_WIDTH / zoom;
+    const viewHeight = GAME_HEIGHT / zoom;
+    const scrollX = clamp(focusX - viewWidth / 2, 0, BATTLE_WORLD_WIDTH - viewWidth);
+    const scrollY = clamp(focusY - viewHeight / 2, 0, GAME_HEIGHT - viewHeight);
+    this.tweens.killTweensOf(camera);
+    this.tweens.add({
+      targets: camera,
+      scrollX,
+      scrollY,
+      zoom,
+      duration: 950,
+      ease: "Cubic.easeInOut",
+    });
   }
 
   private showGravestone(x: number, groundY: number): void {
     const stone = this.add.container(x, groundY + 15).setDepth(22).setAlpha(0).setScale(0.35);
     const art = this.add.graphics();
     art.fillStyle(0x4c5963, 1);
-    art.fillRoundedRect(-28, -70, 56, 73, 20);
-    art.lineStyle(3, 0xc7d1d5, 0.95);
-    art.strokeRoundedRect(-28, -70, 56, 73, 20);
+    art.fillRoundedRect(-40, -100, 80, 103, 26);
+    art.lineStyle(4, 0xc7d1d5, 0.98);
+    art.strokeRoundedRect(-40, -100, 80, 103, 26);
     art.fillStyle(0x303b43, 1);
-    art.fillRect(-32, -7, 64, 10);
-    art.lineStyle(2, 0x39434a, 1);
-    art.lineBetween(-19, -19, 19, -19);
+    art.fillRect(-45, -8, 90, 13);
+    art.lineStyle(3, 0x39434a, 1);
+    art.lineBetween(-27, -27, 27, -27);
     stone.add(art);
-    const inscription = this.add.text(0, -43, "R.I.P.", {
+    const inscription = this.add.text(0, -63, "R.I.P.", {
       fontFamily: "Arial Black, Arial, sans-serif",
-      fontSize: "14px",
-      color: "#fff1d0",
+      fontSize: "21px",
+      color: "#fff8dc",
       stroke: "#303b43",
-      strokeThickness: 3,
+      strokeThickness: 4,
     }).setOrigin(0.5);
     stone.add(inscription);
     this.tweens.add({
@@ -1049,15 +1160,16 @@ export class BattleScene extends Phaser.Scene {
 
   private emitBlockParticles(x: number, y: number, color: number, count: number): void {
     for (let i = 0; i < count; i++) {
-      const particle = this.add.rectangle(x, y, Phaser.Math.Between(3, 6), Phaser.Math.Between(3, 6), color, 1).setDepth(12);
+      const size = Phaser.Math.Between(4, 8);
+      const particle = this.add.rectangle(x, y, size, size, color, 1).setDepth(12);
       this.tweens.add({
         targets: particle,
-        x: x + Phaser.Math.Between(-30, 30),
-        y: y + Phaser.Math.Between(8, 52),
+        x: x + Phaser.Math.Between(-48, 48),
+        y: y + Phaser.Math.Between(18, 78),
         angle: Phaser.Math.Between(-180, 180),
         alpha: 0,
-        duration: Phaser.Math.Between(260, 500),
-        ease: "Cubic.easeIn",
+        duration: Phaser.Math.Between(600, 1000),
+        ease: "Cubic.easeOut",
         onComplete: () => particle.destroy(),
       });
     }
