@@ -68,6 +68,10 @@ export class BattleScene extends Phaser.Scene {
   private hudGraphics!: Phaser.GameObjects.Graphics;
   private blocks: BattleBlock[] = [];
   private tanks!: Record<PlayerId, Phaser.GameObjects.Image>;
+  private readonly tankHitLift: Record<PlayerId, { amount: number }> = {
+    1: { amount: 0 },
+    2: { amount: 0 },
+  };
   private uiCamera!: Phaser.Cameras.Scene2D.Camera;
   private readonly mainCameraIgnored = new WeakSet<Phaser.GameObjects.GameObject>();
   private readonly uiCameraIgnored = new WeakSet<Phaser.GameObjects.GameObject>();
@@ -113,6 +117,8 @@ export class BattleScene extends Phaser.Scene {
   create(): void {
     this.blocks = [];
     this.activeProjectile = null;
+    this.tankHitLift[1].amount = 0;
+    this.tankHitLift[2].amount = 0;
     this.firedThisTurn = false;
     this.lastShotAt = Number.NEGATIVE_INFINITY;
     this.fireButtonPointerId = null;
@@ -199,8 +205,8 @@ export class BattleScene extends Phaser.Scene {
       this.updateTankMovement(delta / 1000);
     }
 
-    this.tanks[1].y = this.terrainAt(this.tanks[1].x);
-    this.tanks[2].y = this.terrainAt(this.tanks[2].x);
+    this.tanks[1].y = this.terrainAt(this.tanks[1].x) - this.tankHitLift[1].amount;
+    this.tanks[2].y = this.terrainAt(this.tanks[2].x) - this.tankHitLift[2].amount;
     if (!this.resolving && !this.isAiming) {
       const zoom = this.battleCameraZoomForTanks();
       this.cameras.main.setZoom(zoom);
@@ -908,6 +914,7 @@ export class BattleScene extends Phaser.Scene {
         const player = playerById(id);
         player.hp = Math.max(0, player.hp - projectile.damage);
         if (id !== projectile.ownerId) playerById(projectile.ownerId).hits += 1;
+        if (player.hp > 0) this.animateTankHit(id, x, projectile.radius, projectile.ownerId, isDirect);
       }
     }
 
@@ -969,6 +976,51 @@ export class BattleScene extends Phaser.Scene {
         this.firedThisTurn = false;
         this.updateHud();
       });
+    });
+  }
+
+  private animateTankHit(id: PlayerId, impactX: number, impactRadius: number, attackerId: PlayerId, isDirect: boolean): void {
+    const tank = this.tanks[id];
+    const halfWidth = tank.displayWidth / 2;
+    const minX = id === 1 ? halfWidth + TANK_EDGE_MARGIN : BATTLE_WORLD_WIDTH / 2 + halfWidth;
+    const maxX = id === 1 ? BATTLE_WORLD_WIDTH / 2 - halfWidth : BATTLE_WORLD_WIDTH - halfWidth - TANK_EDGE_MARGIN;
+    const awayDirection = Math.sign(tank.x - impactX) || Math.sign(tank.x - this.tanks[attackerId].x) || (id === 1 ? -1 : 1);
+    const shove = clamp(18 + impactRadius * 0.3 + (isDirect ? 8 : 0), 20, 46);
+    const desiredX = clamp(tank.x + awayDirection * shove, minX, maxX);
+
+    // Walk the shove in small steps so the hit cannot push a tank through a block.
+    let safeX = tank.x;
+    const distanceToMove = Math.abs(desiredX - tank.x);
+    for (let moved = Math.min(4, distanceToMove); moved <= distanceToMove; moved += 4) {
+      const candidateX = tank.x + awayDirection * moved;
+      if (this.tankOverlapsBlock(candidateX, this.terrainAt(candidateX), tank)) break;
+      safeX = candidateX;
+    }
+
+    const lift = this.tankHitLift[id];
+    this.tweens.killTweensOf(lift);
+    lift.amount = 0;
+    this.tweens.add({
+      targets: lift,
+      amount: clamp(18 + impactRadius * 0.42 + (isDirect ? 12 : 0), 24, 62),
+      duration: 180,
+      yoyo: true,
+      ease: "Sine.easeOut",
+      onComplete: () => { lift.amount = 0; },
+    });
+    this.tweens.add({
+      targets: tank,
+      x: safeX,
+      duration: 220,
+      ease: "Cubic.easeOut",
+    });
+    this.tweens.add({
+      targets: tank,
+      angle: awayDirection * 5,
+      duration: 65,
+      yoyo: true,
+      repeat: 1,
+      ease: "Sine.easeInOut",
     });
   }
 
@@ -1207,7 +1259,7 @@ export class BattleScene extends Phaser.Scene {
     const dir = id === 1 ? 1 : -1;
     const angle = id === gameState.currentPlayer ? this.currentAimAngle : -0.55;
     const pivotX = this.tanks[id].x + dir * 6;
-    const pivotY = this.terrainAt(this.tanks[id].x) - 42;
+    const pivotY = this.terrainAt(this.tanks[id].x) - 42 - this.tankHitLift[id].amount;
     const x = pivotX + dir * Math.cos(angle) * 34;
     const y = pivotY + Math.sin(angle) * 34;
     return { x, y };
@@ -1220,7 +1272,7 @@ export class BattleScene extends Phaser.Scene {
       const dir = id === 1 ? 1 : -1;
       const angle = id === gameState.currentPlayer ? this.currentAimAngle : -0.55;
       const x = this.tanks[id].x + dir * 6;
-      const y = this.terrainAt(this.tanks[id].x) - 42;
+      const y = this.terrainAt(this.tanks[id].x) - 42 - this.tankHitLift[id].amount;
       const endX = x + dir * Math.cos(angle) * 34;
       const endY = y + Math.sin(angle) * 34;
       this.cannonGraphics.lineStyle(10, 0x111820, 1).lineBetween(x, y, endX, endY);
