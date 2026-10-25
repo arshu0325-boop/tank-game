@@ -2,8 +2,8 @@ import Phaser from "phaser";
 import { GAME_HEIGHT, GAME_WIDTH } from "../grid";
 import { gameState, MAX_HP, playerById, resetGameState } from "../state";
 
-const DISPLAY_FONT = "Arial Black, Arial, sans-serif";
-const BODY_FONT = "Arial, sans-serif";
+const DISPLAY_FONT = "Trebuchet MS, Arial, sans-serif";
+const BODY_FONT = "Trebuchet MS, Arial, sans-serif";
 
 export class ResultScene extends Phaser.Scene {
   constructor() {
@@ -19,18 +19,19 @@ export class ResultScene extends Phaser.Scene {
     const headline = winner === 0 ? "DRAW!" : winner === 1 ? "P1 WINS!" : "P2 WINS!";
     const color = winner === 1 ? "#75d5ff" : winner === 2 ? "#ff8881" : "#ffe37d";
 
-    const titlePanel = this.add.graphics().setDepth(2);
-    titlePanel.fillStyle(0x101c2a, 0.96).fillRoundedRect(350, 78, 900, 165, 18);
-    titlePanel.lineStyle(6, 0xf8bd4b, 1).strokeRoundedRect(350, 78, 900, 165, 18);
-    titlePanel.lineStyle(2, 0x28c5ff, 1).strokeRoundedRect(358, 86, 884, 149, 12);
+    for (const x of [352, 1248]) {
+      const star = this.add.star(x, 151, 5, 12, 26, 0xffe589).setStrokeStyle(3, 0xffffff, 0.9).setDepth(3);
+      this.tweens.add({ targets: star, angle: 18, scale: 1.18, duration: 1100, yoyo: true, repeat: -1, ease: "Sine.InOut" });
+    }
 
     const title = this.add.text(GAME_WIDTH / 2, 153, headline, {
-      fontFamily: "MinecraftLogo, Arial Black, Arial, sans-serif", fontSize: "66px", color,
-      stroke: "#080e16", strokeThickness: 8,
-      shadow: { color: "#000000", blur: 7, offsetX: 4, offsetY: 5, fill: true },
+      fontFamily: DISPLAY_FONT, fontStyle: "bold", fontSize: winner === 0 ? "86px" : "92px", color,
+      stroke: "#080e16", strokeThickness: 12,
+      shadow: { color: "#000000", blur: 10, offsetX: 4, offsetY: 6, fill: true },
+      letterSpacing: 3,
     }).setOrigin(0.5).setDepth(3).setAlpha(0).setY(130);
     const subtitle = this.add.text(GAME_WIDTH / 2, 210, "BATTLE COMPLETE", {
-      fontFamily: DISPLAY_FONT, fontSize: "18px", color: "#ffbf43", stroke: "#241b13", strokeThickness: 3,
+      fontFamily: DISPLAY_FONT, fontStyle: "bold", fontSize: "23px", color: "#fff8dc", stroke: "#241b13", strokeThickness: 5,
       letterSpacing: 2,
     }).setOrigin(0.5).setDepth(3).setAlpha(0);
 
@@ -55,38 +56,41 @@ export class ResultScene extends Phaser.Scene {
 
   private makePlayerCard(x: number, title: string, hp: number, shots: number, hits: number, color: number, delay: number): void {
     const card = this.add.container(x, 490).setDepth(4).setAlpha(0).setY(535);
-    const panel = this.add.graphics();
-    panel.fillStyle(0x101c2a, 0.94).fillRoundedRect(-205, -94, 410, 188, 14);
-    panel.lineStyle(5, color, 1).strokeRoundedRect(-205, -94, 410, 188, 14);
-    panel.lineStyle(2, 0xffffff, 0.3).strokeRoundedRect(-197, -86, 394, 172, 10);
     const heading = this.add.text(0, -57, title, {
-      fontFamily: DISPLAY_FONT, fontSize: "27px", color: "#ffffff", stroke: "#111820", strokeThickness: 5,
+      fontFamily: DISPLAY_FONT, fontStyle: "bold", fontSize: "32px", color: "#ffffff", stroke: "#111820", strokeThickness: 7,
+      shadow: { color: "#000000", blur: 5, offsetX: 2, offsetY: 3, fill: true },
     }).setOrigin(0.5);
     const health = this.add.text(0, 2, `REMAINING HP: ${hp}`, {
-      fontFamily: DISPLAY_FONT, fontSize: "20px", color: "#e9f4ec", stroke: "#111820", strokeThickness: 4,
+      fontFamily: DISPLAY_FONT, fontStyle: "bold", fontSize: "23px", color: "#ffffff", stroke: "#111820", strokeThickness: 6,
     }).setOrigin(0.5);
     const stats = this.add.text(0, 42, `SHOTS ${shots}     HITS ${hits}`, {
-      fontFamily: BODY_FONT, fontSize: "18px", color: "#d9e2e5", stroke: "#111820", strokeThickness: 3,
+      fontFamily: BODY_FONT, fontStyle: "bold", fontSize: "21px", color: "#ffffff", stroke: "#111820", strokeThickness: 5,
     }).setOrigin(0.5);
     const barBack = this.add.graphics().fillStyle(0x101418, 1).fillRoundedRect(-145, 68, 290, 16, 7);
     barBack.lineStyle(2, 0x080b0d, 1).strokeRoundedRect(-145, 68, 290, 16, 7);
     const bar = this.add.graphics().fillStyle(0x51d35d, 1)
       .fillRoundedRect(-141, 72, Math.max(0, 282 * hp / MAX_HP), 8, 4);
-    card.add([panel, heading, health, stats, barBack, bar]);
+    card.add([heading, health, stats, barBack, bar]);
     this.tweens.add({ targets: card, alpha: 1, y: 490, duration: 420, delay: 220 + delay, ease: "Back.Out" });
     this.tweens.add({ targets: card, y: 486, duration: 1250, delay: 720 + delay, yoyo: true, repeat: -1, ease: "Sine.InOut" });
   }
 
   private makeButton(x: number, y: number, w: number, h: number, label: string, callback: () => void, color: number): void {
     const button = this.add.container(x, y).setDepth(5).setAlpha(0).setScale(0.9);
-    const rect = this.add.rectangle(0, 0, w, h, color, 1).setStrokeStyle(4, 0xe7f0e3, 1).setInteractive({ useHandCursor: true });
+    const rect = this.add.graphics();
+    rect.fillStyle(0x09111b, 0.7).fillRoundedRect(-w / 2 + 3, -h / 2 + 6, w, h, 28);
+    rect.fillStyle(color, 1).fillRoundedRect(-w / 2, -h / 2, w, h, 28);
+    rect.lineStyle(4, 0xe7f0e3, 1).strokeRoundedRect(-w / 2, -h / 2, w, h, 28);
+    rect.lineStyle(2, 0xffffff, 0.36).strokeRoundedRect(-w / 2 + 7, -h / 2 + 7, w - 14, h - 14, 22);
+    const hitArea = this.add.zone(0, 0, w, h).setInteractive({ useHandCursor: true });
     const text = this.add.text(0, 0, label, {
-      fontFamily: DISPLAY_FONT, fontSize: "25px", color: "#ffffff", stroke: "#14202a", strokeThickness: 6,
+      fontFamily: DISPLAY_FONT, fontStyle: "bold", fontSize: "27px", color: "#ffffff", stroke: "#14202a", strokeThickness: 6,
+      letterSpacing: 1,
     }).setOrigin(0.5);
-    button.add([rect, text]);
+    button.add([rect, text, hitArea]);
     this.tweens.add({ targets: button, alpha: 1, scale: 1, duration: 350, delay: 520, ease: "Back.Out" });
-    rect.on("pointerover", () => this.tweens.add({ targets: button, scale: 1.04, duration: 120, ease: "Back.Out" }));
-    rect.on("pointerout", () => this.tweens.add({ targets: button, scale: 1, duration: 120, ease: "Sine.Out" }));
-    rect.on("pointerdown", callback);
+    hitArea.on("pointerover", () => this.tweens.add({ targets: button, scale: 1.04, duration: 120, ease: "Back.Out" }));
+    hitArea.on("pointerout", () => this.tweens.add({ targets: button, scale: 1, duration: 120, ease: "Sine.Out" }));
+    hitArea.on("pointerdown", callback);
   }
 }
