@@ -1,7 +1,7 @@
 export type PlayerId = 1 | 2;
 export type TileType = "dirt" | "stone" | "obsidian";
 export type WeaponType = "shell" | "missile" | "boomerang";
-export const MAX_HP = 50;
+export const MAX_HP = 30;
 
 export const TANK_CATALOG = [
   { texture: "tank-blue", name: "Vanguard", role: "Balanced", color: 0x168ceb },
