@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { addBlockImage, GAME_HEIGHT, GAME_WIDTH, MINE_COLS, MINE_ROWS, TILE_SIZE, formatTime } from "../grid";
-import { gameState, playerById, type PlayerId, type TileType } from "../state";
+import { gameState, MAX_FUEL, playerById, type PlayerId, type TileType } from "../state";
 import { PlayerStatusHud } from "../ui/PlayerStatusHud";
 
 interface MineCell {
@@ -39,8 +39,9 @@ export class MineScene extends Phaser.Scene {
   private playerHud!: PlayerStatusHud;
   private surfaceGraphics!: Phaser.GameObjects.Graphics;
   private timerGraphics!: Phaser.GameObjects.Graphics;
+  private resourcePanelGraphics!: Phaser.GameObjects.Graphics;
   private timeText!: Phaser.GameObjects.Text;
-  private resourceText!: Phaser.GameObjects.Text;
+  private resourceLabels: Record<PlayerId, Partial<Record<TileType | "iron", Phaser.GameObjects.Text>>> = { 1: {}, 2: {} };
   private hintText!: Phaser.GameObjects.Text;
   private tanks!: Record<PlayerId, Phaser.GameObjects.Image>;
   private drills!: Record<PlayerId, Phaser.GameObjects.Image>;
@@ -105,10 +106,10 @@ export class MineScene extends Phaser.Scene {
       }) as typeof this.keys;
     }
     this.hintText = this.add.text(GAME_WIDTH / 2, 210,
-      "DRIVE: P1 A / D  •  P2 ← / →     CLIMB: P1 W  •  P2 ↑     SIDE DRILL: P1 F  •  P2 ENTER     DOWN DRILL: P1 S  •  P2 ↓", {
-        fontFamily: "Arial Black, Arial, sans-serif", fontSize: "16px", color: "#fff4cf",
+      "P1 DRIVE  A / D  •  P2  ← / →     |     CLIMB  W / ↑     |     SIDE DRILL  F / ENTER     |     DOWN  S / ↓", {
+        fontFamily: "Arial Black, Arial, sans-serif", fontSize: "15px", color: "#fff4cf",
         stroke: "#27313b", strokeThickness: 5, align: "center",
-      }).setOrigin(0.5).setDepth(20);
+      }).setOrigin(0.5).setDepth(21);
     this.updateHud();
     this.setupMiningCameras();
   }
@@ -160,6 +161,7 @@ export class MineScene extends Phaser.Scene {
     }
     if (this.timeLeft <= 0) {
       this.transitioning = true;
+      gameState.players.forEach((player) => { player.fuel = MAX_FUEL; });
       this.scene.start("BuildScene");
     }
   }
@@ -239,6 +241,8 @@ export class MineScene extends Phaser.Scene {
 
   private createHud(): void {
     this.playerHud = new PlayerStatusHud(this, 25);
+    this.add.rectangle(GAME_WIDTH / 2, 210, 1250, 42, 0x111b35, 0.82)
+      .setStrokeStyle(1, 0xa5c7ff, 0.62).setDepth(20);
     this.add.rectangle(GAME_WIDTH / 2, 42, 420, 62, 0x552b18, 0.94).setStrokeStyle(4, 0xffbe43, 1).setDepth(25);
     this.add.text(GAME_WIDTH / 2, 41, "MINING PHASE", {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "31px", color: "#fff5e5",
@@ -252,10 +256,44 @@ export class MineScene extends Phaser.Scene {
     this.drawMineTimerBar();
     this.tweens.add({ targets: this.timerGraphics, alpha: 0.72, duration: 520, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
     this.tweens.add({ targets: this.timeText, scale: 1.045, duration: 720, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
-    this.resourceText = this.add.text(GAME_WIDTH / 2, 875, "", {
-      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "18px", color: "#f9f3dc",
-      stroke: "#101820", strokeThickness: 4, align: "center",
+    this.resourcePanelGraphics = this.add.graphics().setDepth(25);
+    this.resourcePanelGraphics.fillStyle(0x101b32, 0.96).fillRoundedRect(10, 834, 780, 64, 10);
+    this.resourcePanelGraphics.lineStyle(2, playerById(1).color, 0.92).strokeRoundedRect(10, 834, 780, 64, 10);
+    this.resourcePanelGraphics.fillStyle(0x101b32, 0.96).fillRoundedRect(810, 834, 780, 64, 10);
+    this.resourcePanelGraphics.lineStyle(2, playerById(2).color, 0.92).strokeRoundedRect(810, 834, 780, 64, 10);
+    this.resourcePanelGraphics.lineStyle(2, 0xd8e5ed, 0.65).lineBetween(GAME_WIDTH / 2, 838, GAME_WIDTH / 2, 894);
+    this.add.text(400, 841, "P1 BLOCKS", {
+      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "13px", color: "#9cddff",
+      stroke: "#101820", strokeThickness: 3,
     }).setOrigin(0.5).setDepth(27);
+    this.add.text(1200, 841, "P2 BLOCKS", {
+      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "13px", color: "#ffb9b9",
+      stroke: "#101820", strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(27);
+
+    const resourceTypes: Array<TileType | "iron"> = ["dirt", "stone", "obsidian", "iron"];
+    const centers: Record<PlayerId, number[]> = { 1: [102, 294, 486, 678], 2: [922, 1114, 1306, 1498] };
+    for (const id of [1, 2] as PlayerId[]) {
+      const player = playerById(id);
+      resourceTypes.forEach((type, index) => {
+        const x = centers[id][index];
+        const fill = id === 1 ? 0x173d58 : 0x512a31;
+        this.add.rectangle(x, 873, 174, 48, fill, 1)
+          .setStrokeStyle(2, player.color, 0.95).setDepth(26);
+        addBlockImage(this, x - 49, 873, type === "iron" ? "stone" : type, {
+          size: 38,
+          ...(type === "iron" ? { ore: "iron" as const } : {}),
+        }).setDepth(27);
+        this.add.text(x + 22, 862, type.toUpperCase(), {
+          fontFamily: "Arial Black, Arial, sans-serif", fontSize: "10px", color: "#ffffff",
+          stroke: "#101820", strokeThickness: 3,
+        }).setOrigin(0.5).setDepth(28);
+        this.resourceLabels[id][type] = this.add.text(x + 22, 884, "0", {
+          fontFamily: "Arial Black, Arial, sans-serif", fontSize: "18px", color: id === 1 ? "#b7eaff" : "#ffd0cc",
+          stroke: "#101820", strokeThickness: 4,
+        }).setOrigin(0.5).setDepth(28);
+      });
+    }
   }
 
   private updateTankMovement(deltaSeconds: number): void {
@@ -506,12 +544,13 @@ export class MineScene extends Phaser.Scene {
 
   private updateHud(): void {
     this.playerHud.update();
-    const p1 = playerById(1);
-    const p2 = playerById(2);
-    this.resourceText.setText(
-      `P1  Dirt ${p1.inventory.dirt}  Stone ${p1.inventory.stone}  Obsidian ${p1.inventory.obsidian}  Iron ${p1.iron}` +
-      `     |     P2  Dirt ${p2.inventory.dirt}  Stone ${p2.inventory.stone}  Obsidian ${p2.inventory.obsidian}  Iron ${p2.iron}`,
-    );
+    for (const id of [1, 2] as PlayerId[]) {
+      const player = playerById(id);
+      for (const type of ["dirt", "stone", "obsidian"] as TileType[]) {
+        this.resourceLabels[id][type]?.setText(`${player.inventory[type]}`);
+      }
+      this.resourceLabels[id].iron?.setText(`${player.iron}`);
+    }
   }
 
   private drawMineTimerBar(): void {
@@ -520,11 +559,12 @@ export class MineScene extends Phaser.Scene {
     const y = 126;
     const width = 320;
     const fill = width * Phaser.Math.Clamp(this.timeLeft / MINE_SECONDS, 0, 1);
+    const timerColor = this.timeLeft <= 5 ? 0xff5962 : 0xffd34f;
     this.timerGraphics.clear();
-    if (fill > 0) this.timerGraphics.fillStyle(0xffd34f, 0.3).fillRoundedRect(x - 4, y - 4, fill + 8, 20, 7);
+    if (fill > 0) this.timerGraphics.fillStyle(timerColor, 0.3).fillRoundedRect(x - 4, y - 4, fill + 8, 20, 7);
     this.timerGraphics.fillStyle(0x15212a, 0.98).fillRoundedRect(x, y, width, 12, 5);
-    this.timerGraphics.fillStyle(0xffd34f, 1).fillRoundedRect(x + 2, y + 2, Math.max(0, fill - 4), 8, 3);
-    this.timerGraphics.lineStyle(1, 0xffef9a, 0.95).strokeRoundedRect(x, y, width, 12, 5);
+    this.timerGraphics.fillStyle(timerColor, 1).fillRoundedRect(x + 2, y + 2, Math.max(0, fill - 4), 8, 3);
+    this.timerGraphics.lineStyle(1, this.timeLeft <= 5 ? 0xffc0c0 : 0xffef9a, 0.95).strokeRoundedRect(x, y, width, 12, 5);
   }
   private drawMiningCracks(cell: MineCell): void {
   if (!cell.crack) return;

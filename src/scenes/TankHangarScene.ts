@@ -1,9 +1,12 @@
 import Phaser from "phaser";
 import { GAME_HEIGHT, GAME_WIDTH } from "../grid";
-import { playerById, resetGameState, TANK_CATALOG, type PlayerId } from "../state";
+import { gameState, playerById, resetGameState, TANK_CATALOG, type PlayerId } from "../state";
 
 export class TankHangarScene extends Phaser.Scene {
   private activePlayer: PlayerId = 1;
+  private nightButton!: Phaser.GameObjects.Container;
+  private nightLabel!: Phaser.GameObjects.Text;
+  private selectionStatus!: Phaser.GameObjects.Text;
 
   constructor() {
     super("TankHangarScene");
@@ -26,10 +29,19 @@ export class TankHangarScene extends Phaser.Scene {
 
     this.makePlayerTab(575, 174, 1);
     this.makePlayerTab(1025, 174, 2);
+    this.makeNightToggle();
     TANK_CATALOG.forEach((tank, index) => this.makeTankCard(index));
+    this.selectionStatus = this.add.text(GAME_WIDTH / 2, 766, "Choose a different tank for each player.", {
+      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "17px", color: "#f2d8a0",
+      stroke: "#211922", strokeThickness: 4,
+    }).setOrigin(0.5);
 
     this.makeButton(125, 840, 190, 58, "BACK", () => this.scene.start("MenuScene"), 0x36465f);
     this.makeButton(GAME_WIDTH / 2, 840, 390, 68, "START MATCH", () => {
+      if (playerById(1).tankTexture === playerById(2).tankTexture) {
+        this.selectionStatus.setText("Players must choose different tanks.").setColor("#ff8d93");
+        return;
+      }
       resetGameState();
       this.scene.start("MineScene");
     }, 0x378b37);
@@ -98,6 +110,9 @@ export class TankHangarScene extends Phaser.Scene {
 
   private makeTankCard(index: number): void {
     const tank = TANK_CATALOG[index];
+    const otherPlayer = this.activePlayer === 1 ? 2 : 1;
+    const heldByOther = playerById(otherPlayer).tankTexture === tank.texture;
+    const heldByCurrent = playerById(this.activePlayer).tankTexture === tank.texture;
     const col = index % 3;
     const row = Math.floor(index / 3);
     const x = 280 + col * 520;
@@ -110,19 +125,24 @@ export class TankHangarScene extends Phaser.Scene {
       frame.lineStyle(3, line, 0.95).strokeRoundedRect(x - 180, y - 97, 360, 194, 23);
       frame.fillStyle(tank.color, 0.22).fillRoundedRect(x - 174, y - 91, 348, 7, 4);
     };
-    drawFrame(0x3c2931, tank.color);
+    drawFrame(heldByOther ? 0x28242e : heldByCurrent ? 0x4b3940 : 0x3c2931, tank.color);
     const panel = this.add.rectangle(x, y, 360, 194, 0xffffff, 0.001).setInteractive({ useHandCursor: true });
-    panel.on("pointerover", () => drawFrame(0x53383d, 0xffdfa0));
-    panel.on("pointerout", () => drawFrame(0x3c2931, tank.color));
+    panel.on("pointerover", () => drawFrame(heldByOther ? 0x38313d : 0x53383d, heldByOther ? 0xb08a9a : 0xffdfa0));
+    panel.on("pointerout", () => drawFrame(heldByOther ? 0x28242e : heldByCurrent ? 0x4b3940 : 0x3c2931, tank.color));
     panel.on("pointerdown", () => {
+      if (playerById(otherPlayer).tankTexture === tank.texture) {
+        this.selectionStatus?.setText(`${tank.name} is already selected by Player ${otherPlayer}.`).setColor("#ff8d93");
+        return;
+      }
       playerById(this.activePlayer).tankTexture = tank.texture;
+      playerById(this.activePlayer).color = tank.color;
       this.scene.restart({ activePlayer: this.activePlayer });
     });
 
     const selectedP1 = playerById(1).tankTexture === tank.texture;
     const selectedP2 = playerById(2).tankTexture === tank.texture;
     if (selectedP1 || selectedP2) {
-      this.add.rectangle(x, y - 82, 112, 25, selectedP1 ? 0x138dea : 0xe43d46, 1)
+      this.add.rectangle(x, y - 82, 128, 25, selectedP1 ? 0x138dea : 0xe43d46, 1)
         .setStrokeStyle(1, 0xffffff, 0.7);
       this.add.text(x, y - 82, selectedP1 && selectedP2 ? "P1 + P2" : selectedP1 ? "P1 PICK" : "P2 PICK", {
         fontFamily: "Arial Black, Arial, sans-serif", fontSize: "12px", color: "#ffffff",
@@ -144,6 +164,13 @@ export class TankHangarScene extends Phaser.Scene {
     this.add.text(x, y + 84, tank.role, {
       fontFamily: "Arial", fontSize: "16px", color: "#edc9a5",
     }).setOrigin(0.5);
+    if (heldByOther) {
+      this.add.rectangle(x, y, 360, 194, 0x10101b, 0.56).setStrokeStyle(2, 0xc3a6ad, 0.78);
+      this.add.text(x, y + 4, `TAKEN BY PLAYER ${otherPlayer}`, {
+        fontFamily: "Arial Black, Arial, sans-serif", fontSize: "16px", color: "#fff0f0",
+        stroke: "#20151b", strokeThickness: 4, align: "center",
+      }).setOrigin(0.5);
+    }
   }
 
   private makeButton(x: number, y: number, w: number, h: number, label: string, callback: () => void, color: number): void {
@@ -166,5 +193,25 @@ export class TankHangarScene extends Phaser.Scene {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "23px", color: "#ffffff",
       stroke: "#17202a", strokeThickness: 5,
     }).setOrigin(0.5);
+  }
+
+  private makeNightToggle(): void {
+    this.nightButton = this.add.container(1415, 173);
+    const panel = this.add.rectangle(0, 0, 230, 52, 0x151d4c, 1)
+      .setStrokeStyle(2, 0x788eff, 1)
+      .setInteractive({ useHandCursor: true });
+    panel.on("pointerdown", () => {
+      gameState.nightMode = !gameState.nightMode;
+      this.updateNightToggle();
+    });
+    this.nightLabel = this.add.text(0, 0, "", {
+      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "17px", color: "#ffffff",
+    }).setOrigin(0.5);
+    this.nightButton.add([panel, this.nightLabel]);
+    this.updateNightToggle();
+  }
+
+  private updateNightToggle(): void {
+    this.nightLabel.setText(gameState.nightMode ? "☾  NIGHT MODE: ON" : "☀  NIGHT MODE: OFF");
   }
 }
