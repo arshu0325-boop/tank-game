@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { addBlockImage, GAME_HEIGHT, GAME_WIDTH, MINE_COLS, MINE_ROWS, TILE_SIZE, formatTime } from "../grid";
-import { gameState, MAX_HP, playerById, type PlayerId, type TileType } from "../state";
+import { gameState, playerById, type PlayerId, type TileType } from "../state";
+import { PlayerStatusHud } from "../ui/PlayerStatusHud";
 
 interface MineCell {
   col: number;
@@ -35,12 +36,10 @@ export class MineScene extends Phaser.Scene {
   private elapsed = 0;
   private timeLeft = MINE_SECONDS;
   private transitioning = false;
-  private hudGraphics!: Phaser.GameObjects.Graphics;
+  private playerHud!: PlayerStatusHud;
   private surfaceGraphics!: Phaser.GameObjects.Graphics;
   private timerGraphics!: Phaser.GameObjects.Graphics;
   private timeText!: Phaser.GameObjects.Text;
-  private p1Label!: Phaser.GameObjects.Text;
-  private p2Label!: Phaser.GameObjects.Text;
   private resourceText!: Phaser.GameObjects.Text;
   private hintText!: Phaser.GameObjects.Text;
   private tanks!: Record<PlayerId, Phaser.GameObjects.Image>;
@@ -239,11 +238,7 @@ export class MineScene extends Phaser.Scene {
   }
 
   private createHud(): void {
-    this.hudGraphics = this.add.graphics().setDepth(25);
-    this.add.text(48, 27, "P1: Controller", this.panelTitleStyle()).setDepth(26);
-    this.add.text(1305, 27, "P2: Duelist", this.panelTitleStyle()).setDepth(26);
-    this.p1Label = this.add.text(48, 66, `HP ${MAX_HP}   Fuel 100`, this.panelDetailStyle()).setDepth(26);
-    this.p2Label = this.add.text(1305, 66, `HP ${MAX_HP}   Fuel 100`, this.panelDetailStyle()).setDepth(26);
+    this.playerHud = new PlayerStatusHud(this, 25);
     this.add.rectangle(GAME_WIDTH / 2, 42, 420, 62, 0x552b18, 0.94).setStrokeStyle(4, 0xffbe43, 1).setDepth(25);
     this.add.text(GAME_WIDTH / 2, 41, "MINE & CRAFT PHASE", {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "31px", color: "#fff5e5",
@@ -510,31 +505,13 @@ export class MineScene extends Phaser.Scene {
   }
 
   private updateHud(): void {
-    this.hudGraphics.clear();
+    this.playerHud.update();
     const p1 = playerById(1);
     const p2 = playerById(2);
-    this.hudGraphics.fillStyle(0x163047, 0.92).fillRoundedRect(18, 16, 306, 94, 14);
-    this.hudGraphics.lineStyle(3, 0x3098f5, 1).strokeRoundedRect(18, 16, 306, 94, 14);
-    this.hudGraphics.fillStyle(0x462b2b, 0.92).fillRoundedRect(1276, 16, 306, 94, 14);
-    this.hudGraphics.lineStyle(3, 0xf05252, 1).strokeRoundedRect(1276, 16, 306, 94, 14);
-    this.drawBar(165, 64, 145, 12, p1.hp / MAX_HP, 0x4fd65c);
-    this.drawBar(165, 88, 145, 12, p1.fuel / 100, 0xf6bd43);
-    this.drawBar(1420, 64, 145, 12, p2.hp / MAX_HP, 0x4fd65c);
-    this.drawBar(1420, 88, 145, 12, p2.fuel / 100, 0xf6bd43);
-    this.p1Label.setText(`HP ${p1.hp}   Fuel ${Math.ceil(p1.fuel)}`);
-    this.p2Label.setText(`HP ${p2.hp}   Fuel ${Math.ceil(p2.fuel)}`);
     this.resourceText.setText(
       `P1  Dirt ${p1.inventory.dirt}  Stone ${p1.inventory.stone}  Obsidian ${p1.inventory.obsidian}  Iron ${p1.iron}` +
       `     |     P2  Dirt ${p2.inventory.dirt}  Stone ${p2.inventory.stone}  Obsidian ${p2.inventory.obsidian}  Iron ${p2.iron}`,
     );
-  }
-
-  private drawBar(x: number, y: number, w: number, h: number, ratio: number, color: number): void {
-    const fillWidth = Math.max(0, (w - 4) * Phaser.Math.Clamp(ratio, 0, 1));
-    if (fillWidth > 0) this.hudGraphics.fillStyle(color, 0.22).fillRoundedRect(x - 3, y - 3, fillWidth + 10, h + 6, 5);
-    this.hudGraphics.fillStyle(0x12171b, 1).fillRect(x, y, w, h);
-    this.hudGraphics.lineStyle(2, 0x090d10, 1).strokeRect(x, y, w, h);
-    this.hudGraphics.fillStyle(color, 1).fillRect(x + 2, y + 2, fillWidth, h - 4);
   }
 
   private drawMineTimerBar(): void {
@@ -660,14 +637,6 @@ export class MineScene extends Phaser.Scene {
     onComplete: () => pop.destroy(),
   });
 }
-
-  private panelTitleStyle(): Phaser.Types.GameObjects.Text.TextStyle {
-    return { fontFamily: "Arial Black, Arial, sans-serif", fontSize: "24px", color: "#f8f6ec", stroke: "#151b23", strokeThickness: 5 };
-  }
-
-  private panelDetailStyle(): Phaser.Types.GameObjects.Text.TextStyle {
-    return { fontFamily: "Arial Black, Arial, sans-serif", fontSize: "15px", color: "#f6f0d8", stroke: "#151b23", strokeThickness: 3 };
-  }
 
   private cellKey(col: number, row: number): string {
     return `${col},${row}`;

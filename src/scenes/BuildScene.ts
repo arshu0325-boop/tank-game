@@ -4,6 +4,7 @@ import {
   GAME_HEIGHT, GAME_WIDTH, TILE_SIZE, formatTime,
 } from "../grid";
 import { gameState, playerById, type PlayerId, type TileType } from "../state";
+import { PlayerStatusHud } from "../ui/PlayerStatusHud";
 
 const BUILD_SECONDS = 15;
 
@@ -23,6 +24,7 @@ export class BuildScene extends Phaser.Scene {
   private transitioning = false;
   private placementPointerId: number | null = null;
   private hudGraphics!: Phaser.GameObjects.Graphics;
+  private playerHud!: PlayerStatusHud;
   private timerGraphics!: Phaser.GameObjects.Graphics;
   private timerText!: Phaser.GameObjects.Text;
   private selectionText!: Phaser.GameObjects.Text;
@@ -171,6 +173,7 @@ export class BuildScene extends Phaser.Scene {
 
   private createHud(): void {
     this.hudGraphics = this.add.graphics().setDepth(20);
+    this.playerHud = new PlayerStatusHud(this, 20);
     this.timerGraphics = this.add.graphics().setDepth(22);
     this.add.rectangle(GAME_WIDTH / 2, 43, 420, 62, 0x552b18, 0.94).setStrokeStyle(4, 0xffbe43, 1).setDepth(20);
     this.add.text(GAME_WIDTH / 2, 41, "BUILD PHASE", {
@@ -335,6 +338,7 @@ export class BuildScene extends Phaser.Scene {
 
   private updateHud(): void {
     this.hudGraphics.clear();
+    this.playerHud.update();
     for (const type of ["dirt", "stone", "obsidian"] as TileType[]) {
       const x = type === "dirt" ? 545 : type === "stone" ? 675 : 805;
       if (gameState.selectedTile === type) {
