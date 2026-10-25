@@ -1,11 +1,9 @@
 import Phaser from "phaser";
 import { GAME_HEIGHT, GAME_WIDTH } from "../grid";
-import { gameState, playerById, resetGameState, TANK_CATALOG, type PlayerId } from "../state";
+import { playerById, resetGameState, TANK_CATALOG, type PlayerId } from "../state";
 
 export class TankHangarScene extends Phaser.Scene {
   private activePlayer: PlayerId = 1;
-  private nightButton!: Phaser.GameObjects.Container;
-  private nightLabel!: Phaser.GameObjects.Text;
   private selectionStatus!: Phaser.GameObjects.Text;
 
   constructor() {
@@ -29,7 +27,6 @@ export class TankHangarScene extends Phaser.Scene {
 
     this.makePlayerTab(575, 174, 1);
     this.makePlayerTab(1025, 174, 2);
-    this.makeNightToggle();
     TANK_CATALOG.forEach((tank, index) => this.makeTankCard(index));
     this.selectionStatus = this.add.text(GAME_WIDTH / 2, 766, "Choose a different tank for each player.", {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "17px", color: "#f2d8a0",
@@ -252,23 +249,4 @@ export class TankHangarScene extends Phaser.Scene {
     }).setOrigin(0.5);
   }
 
-  private makeNightToggle(): void {
-    this.nightButton = this.add.container(1415, 173);
-    const panel = this.add.rectangle(0, 0, 230, 52, 0x151d4c, 1)
-      .setStrokeStyle(2, 0x788eff, 1)
-      .setInteractive({ useHandCursor: true });
-    panel.on("pointerdown", () => {
-      gameState.nightMode = !gameState.nightMode;
-      this.updateNightToggle();
-    });
-    this.nightLabel = this.add.text(0, 0, "", {
-      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "17px", color: "#ffffff",
-    }).setOrigin(0.5);
-    this.nightButton.add([panel, this.nightLabel]);
-    this.updateNightToggle();
-  }
-
-  private updateNightToggle(): void {
-    this.nightLabel.setText(gameState.nightMode ? "☾  NIGHT MODE: ON" : "☀  NIGHT MODE: OFF");
-  }
 }
