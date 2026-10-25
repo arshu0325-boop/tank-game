@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { GAME_HEIGHT, GAME_WIDTH } from "../grid";
 import { gameState } from "../state";
+import { startMenuMusic } from "../menuMusic";
 
 export class MenuScene extends Phaser.Scene {
   private background!: Phaser.GameObjects.Image;
@@ -13,6 +14,8 @@ export class MenuScene extends Phaser.Scene {
   }
 
   create(): void {
+    startMenuMusic(this);
+
     this.background = this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, this.backgroundKey())
       .setDisplaySize(GAME_WIDTH, GAME_HEIGHT)
       .setDepth(-10);

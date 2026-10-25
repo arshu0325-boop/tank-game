@@ -11,6 +11,10 @@ export class ResultScene extends Phaser.Scene {
   }
 
   create(): void {
+    const music = this.sound.add("menu-result-bgm", { loop: true, volume: 0.45 });
+    music.play();
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => music.stop());
+
     const background = gameState.nightMode ? "result-night-bg" : "result-day-bg";
     this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, background)
       .setDisplaySize(GAME_WIDTH, GAME_HEIGHT)
