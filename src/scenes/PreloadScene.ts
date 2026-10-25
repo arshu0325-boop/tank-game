@@ -14,6 +14,8 @@ export class PreloadScene extends Phaser.Scene {
     this.load.image("result-day-bg", "/assets/result-day.png");
     this.load.audio("menu-result-bgm", "/assets/out-battle.mp3");
     this.load.audio("battle-bgm", "/assets/in-battle.mp3");
+    this.load.audio("shell-hit-sfx", "/assets/shell-hit.mp3");
+    this.load.audio("missile-hit-sfx", "/assets/missile-hit.mp3");
   }
 
   create(): void {

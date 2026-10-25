@@ -5,7 +5,7 @@ import {
 } from "../grid";
 import { gameState, otherPlayerId, playerById, type PlayerId, type TileType, type WeaponType } from "../state";
 import { PlayerStatusHud } from "../ui/PlayerStatusHud";
-import { playImpact, playShot } from "../sfx";
+import { playImpact, playShot, startTravelWhoosh } from "../sfx";
 
 const TERRAIN_STEP = 8;
 // Keep the opening distance inside the missile's normal-power flight range.
@@ -111,6 +111,7 @@ export class BattleScene extends Phaser.Scene {
   };
   private resolving = false;
   private battleMusic?: Phaser.Sound.BaseSound;
+  private stopTravelWhoosh?: () => void;
 
   constructor() {
     super("BattleScene");
@@ -118,9 +119,11 @@ export class BattleScene extends Phaser.Scene {
 
   create(): void {
     this.sound.stopAll();
-    this.battleMusic = this.sound.add("battle-bgm", { loop: true, volume: 0.45 });
+    this.battleMusic = this.sound.add("battle-bgm", { loop: true, volume: 0.18 });
     this.battleMusic.play();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.stopTravelWhoosh?.();
+      this.stopTravelWhoosh = undefined;
       this.battleMusic?.stop();
       this.battleMusic?.destroy();
       this.battleMusic = undefined;
@@ -789,6 +792,8 @@ export class BattleScene extends Phaser.Scene {
     const angle = angleOverride ?? this.aimAngle(ownerId, aimX, aimY);
     const spec = WEAPONS[weaponType];
     playShot(this, weaponType);
+    this.stopTravelWhoosh?.();
+    this.stopTravelWhoosh = startTravelWhoosh(this, weaponType);
     const speed = spec.speed * clamp(powerOverride ?? this.power, 0.5, 1.5);
     const dir = ownerId === 1 ? 1 : -1;
     this.aimGraphics.clear();
@@ -935,7 +940,11 @@ export class BattleScene extends Phaser.Scene {
   private resolveImpact(x: number, y: number, projectile: ProjectileState, directTank: PlayerId | null): void {
     if (this.resolving) return;
     this.resolving = true;
-    playImpact(this, projectile.weapon);
+    this.stopTravelWhoosh?.();
+    this.stopTravelWhoosh = undefined;
+    if (projectile.weapon === "shell") this.sound.play("shell-hit-sfx", { volume: 1 });
+    else if (projectile.weapon === "missile") this.sound.play("missile-hit-sfx", { volume: 1 });
+    else playImpact(this, projectile.weapon);
     const enemyId = otherPlayerId(projectile.ownerId);
     for (const block of [...this.blocks]) {
       if (block.ownerId === projectile.ownerId) continue;
@@ -1030,6 +1039,8 @@ export class BattleScene extends Phaser.Scene {
   private resolveMiss(projectile: ProjectileState): void {
     if (this.resolving) return;
     this.resolving = true;
+    this.stopTravelWhoosh?.();
+    this.stopTravelWhoosh = undefined;
     projectile.image.destroy();
     projectile.glowImage?.destroy();
     this.activeProjectile = null;
