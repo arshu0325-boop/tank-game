@@ -1,11 +1,9 @@
 import Phaser from "phaser";
 import { GAME_HEIGHT, GAME_WIDTH } from "../grid";
-import { gameState, playerById, resetGameState, TANK_CATALOG, type PlayerId } from "../state";
+import { playerById, resetGameState, TANK_CATALOG, type PlayerId } from "../state";
 
 export class TankHangarScene extends Phaser.Scene {
   private activePlayer: PlayerId = 1;
-  private nightButton!: Phaser.GameObjects.Container;
-  private nightLabel!: Phaser.GameObjects.Text;
 
   constructor() {
     super("TankHangarScene");
@@ -28,7 +26,6 @@ export class TankHangarScene extends Phaser.Scene {
 
     this.makePlayerTab(575, 174, 1);
     this.makePlayerTab(1025, 174, 2);
-    this.makeNightToggle();
     TANK_CATALOG.forEach((tank, index) => this.makeTankCard(index));
 
     this.makeButton(125, 840, 190, 58, "BACK", () => this.scene.start("MenuScene"), 0x36465f);
@@ -70,9 +67,20 @@ export class TankHangarScene extends Phaser.Scene {
     const isActive = this.activePlayer === id;
     const color = id === 1 ? 0x148fea : 0xed464b;
     const card = this.add.container(x, y);
-    const panel = this.add.rectangle(0, 0, 350, 72, isActive ? color : 0x1b202d, 1)
-      .setStrokeStyle(3, isActive ? 0xffffff : color, 0.95)
-      .setInteractive({ useHandCursor: true });
+    const frame = this.add.graphics();
+    const drawTab = (hover = false) => {
+      frame.clear();
+      frame.fillStyle(0x100e17, 0.45).fillRoundedRect(-171, -32, 350, 72, 18);
+      frame.fillStyle(isActive ? (hover ? 0x267db0 : color) : (hover ? 0x343442 : 0x1b202d), 1)
+        .fillRoundedRect(-175, -36, 350, 72, 18);
+      frame.lineStyle(3, isActive ? 0xffffff : color, 0.95).strokeRoundedRect(-175, -36, 350, 72, 18);
+      frame.fillStyle(color, isActive ? 0.7 : 0.32).fillRoundedRect(-169, -30, 338, 5, 3);
+    };
+    drawTab();
+    card.add(frame);
+    const panel = this.add.rectangle(0, 0, 350, 72, 0xffffff, 0.001).setInteractive({ useHandCursor: true });
+    panel.on("pointerover", () => drawTab(true));
+    panel.on("pointerout", () => drawTab());
     panel.on("pointerdown", () => {
       this.activePlayer = id;
       this.scene.restart({ activePlayer: id });
@@ -94,11 +102,18 @@ export class TankHangarScene extends Phaser.Scene {
     const row = Math.floor(index / 3);
     const x = 280 + col * 520;
     const y = 390 + row * 225;
-    const panel = this.add.rectangle(x, y, 360, 194, 0x3c2931, 0.94)
-      .setStrokeStyle(3, tank.color, 0.9)
-      .setInteractive({ useHandCursor: true });
-    panel.on("pointerover", () => panel.setFillStyle(0x53383d));
-    panel.on("pointerout", () => panel.setFillStyle(0x3c2931));
+    const frame = this.add.graphics();
+    const drawFrame = (fill: number, line: number) => {
+      frame.clear();
+      frame.fillStyle(0x100e17, 0.42).fillRoundedRect(x - 174, y - 91, 360, 194, 23);
+      frame.fillStyle(fill, 0.97).fillRoundedRect(x - 180, y - 97, 360, 194, 23);
+      frame.lineStyle(3, line, 0.95).strokeRoundedRect(x - 180, y - 97, 360, 194, 23);
+      frame.fillStyle(tank.color, 0.22).fillRoundedRect(x - 174, y - 91, 348, 7, 4);
+    };
+    drawFrame(0x3c2931, tank.color);
+    const panel = this.add.rectangle(x, y, 360, 194, 0xffffff, 0.001).setInteractive({ useHandCursor: true });
+    panel.on("pointerover", () => drawFrame(0x53383d, 0xffdfa0));
+    panel.on("pointerout", () => drawFrame(0x3c2931, tank.color));
     panel.on("pointerdown", () => {
       playerById(this.activePlayer).tankTexture = tank.texture;
       this.scene.restart({ activePlayer: this.activePlayer });
@@ -131,31 +146,21 @@ export class TankHangarScene extends Phaser.Scene {
     }).setOrigin(0.5);
   }
 
-  private makeNightToggle(): void {
-    this.nightButton = this.add.container(1415, 173);
-    const panel = this.add.rectangle(0, 0, 230, 52, 0x151d4c, 1)
-      .setStrokeStyle(2, 0x788eff, 1)
-      .setInteractive({ useHandCursor: true });
-    panel.on("pointerdown", () => {
-      gameState.nightMode = !gameState.nightMode;
-      this.updateNightToggle();
-    });
-    this.nightLabel = this.add.text(0, 0, "", {
-      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "17px", color: "#ffffff",
-    }).setOrigin(0.5);
-    this.nightButton.add([panel, this.nightLabel]);
-    this.updateNightToggle();
-  }
-
-  private updateNightToggle(): void {
-    this.nightLabel.setText(gameState.nightMode ? "☾  NIGHT MODE: ON" : "☀  NIGHT MODE: OFF");
-  }
-
   private makeButton(x: number, y: number, w: number, h: number, label: string, callback: () => void, color: number): void {
-    const rect = this.add.rectangle(x, y, w, h, color, 1).setStrokeStyle(3, 0xf3ead8, 0.95)
-      .setInteractive({ useHandCursor: true });
-    rect.on("pointerover", () => rect.setAlpha(0.82));
-    rect.on("pointerout", () => rect.setAlpha(1));
+    const frame = this.add.graphics();
+    const drawButton = (hover = false) => {
+      frame.clear();
+      frame.fillStyle(0x100e17, 0.5).fillRoundedRect(x - w / 2 + 5, y - h / 2 + 6, w, h, 18);
+      frame.fillStyle(hover ? Phaser.Display.Color.ValueToColor(color).brighten(16).color : color, 1)
+        .fillRoundedRect(x - w / 2, y - h / 2, w, h, 18);
+      frame.lineStyle(3, hover ? 0xffdf9b : 0xf3ead8, 0.98)
+        .strokeRoundedRect(x - w / 2, y - h / 2, w, h, 18);
+      frame.fillStyle(0xffffff, hover ? 0.2 : 0.12).fillRoundedRect(x - w / 2 + 8, y - h / 2 + 7, w - 16, 5, 3);
+    };
+    drawButton();
+    const rect = this.add.rectangle(x, y, w, h, 0xffffff, 0.001).setInteractive({ useHandCursor: true });
+    rect.on("pointerover", () => drawButton(true));
+    rect.on("pointerout", () => drawButton());
     rect.on("pointerdown", callback);
     this.add.text(x, y, label, {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "23px", color: "#ffffff",
