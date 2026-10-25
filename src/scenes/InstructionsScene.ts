@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { GAME_HEIGHT, GAME_WIDTH } from "../grid";
+import { startMenuMusic } from "../menuMusic";
 
 export class InstructionsScene extends Phaser.Scene {
   constructor() {
@@ -7,6 +8,7 @@ export class InstructionsScene extends Phaser.Scene {
   }
 
   create(): void {
+    startMenuMusic(this);
     this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, "opening-background")
       .setDisplaySize(GAME_WIDTH, GAME_HEIGHT)
       .setDepth(-2);

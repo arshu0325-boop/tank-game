@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { GAME_HEIGHT, GAME_WIDTH } from "../grid";
 import { gameState, playerById, resetGameState } from "../state";
+import { startMenuMusic } from "../menuMusic";
 
 const DISPLAY_FONT = "Trebuchet MS, Arial, sans-serif";
 const BODY_FONT = "Trebuchet MS, Arial, sans-serif";
@@ -11,9 +12,7 @@ export class ResultScene extends Phaser.Scene {
   }
 
   create(): void {
-    const music = this.sound.add("menu-result-bgm", { loop: true, volume: 0.45 });
-    music.play();
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => music.stop());
+    startMenuMusic(this);
 
     const background = gameState.nightMode ? "result-night-bg" : "result-day-bg";
     this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, background)
