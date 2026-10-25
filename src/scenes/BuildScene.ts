@@ -175,7 +175,11 @@ export class BuildScene extends Phaser.Scene {
     this.hudGraphics = this.add.graphics().setDepth(20);
     this.playerHud = new PlayerStatusHud(this, 20);
     this.timerGraphics = this.add.graphics().setDepth(22);
-    this.add.rectangle(GAME_WIDTH / 2, 43, 420, 62, 0x552b18, 0.94).setStrokeStyle(4, 0xffbe43, 1).setDepth(20);
+    const phaseBadge = this.add.graphics().setDepth(20);
+    phaseBadge.fillStyle(0x100e17, 0.5).fillRoundedRect(GAME_WIDTH / 2 - 205, 16, 420, 62, 17);
+    phaseBadge.fillStyle(0x552b18, 0.97).fillRoundedRect(GAME_WIDTH / 2 - 210, 12, 420, 62, 17);
+    phaseBadge.lineStyle(3, 0xffbe43, 1).strokeRoundedRect(GAME_WIDTH / 2 - 210, 12, 420, 62, 17);
+    phaseBadge.fillStyle(0xffbe43, 0.3).fillRoundedRect(GAME_WIDTH / 2 - 204, 18, 408, 6, 3);
     this.add.text(GAME_WIDTH / 2, 41, "BUILD PHASE", {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "34px", color: "#fff5e5",
       stroke: "#28180e", strokeThickness: 6,
