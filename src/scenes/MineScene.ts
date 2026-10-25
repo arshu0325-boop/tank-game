@@ -160,10 +160,15 @@ export class MineScene extends Phaser.Scene {
       }
     }
     if (this.timeLeft <= 0) {
-      this.transitioning = true;
-      gameState.players.forEach((player) => { player.fuel = MAX_FUEL; });
-      this.scene.start("BuildScene");
+      this.skipMining();
     }
+  }
+
+  private skipMining(): void {
+    if (this.transitioning) return;
+    this.transitioning = true;
+    gameState.players.forEach((player) => { player.fuel = MAX_FUEL; });
+    this.scene.start("BuildScene");
   }
 
   private createWorld(): void {
