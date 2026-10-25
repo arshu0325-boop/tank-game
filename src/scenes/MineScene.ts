@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { addBlockImage, GAME_HEIGHT, GAME_WIDTH, MINE_COLS, MINE_ROWS, TILE_SIZE, formatTime } from "../grid";
 import { gameState, MAX_FUEL, playerById, type PlayerId, type TileType } from "../state";
 import { PlayerStatusHud } from "../ui/PlayerStatusHud";
+import { playDrill } from "../sfx";
 
 interface MineCell {
   col: number;
@@ -491,6 +492,7 @@ export class MineScene extends Phaser.Scene {
     const x = target.col * TILE_SIZE + TILE_SIZE / 2;
     const y = MINE_ORIGIN_Y + target.row * TILE_SIZE + TILE_SIZE / 2;
     target.hp--;
+    playDrill(this);
     target.image.setAlpha(0.55 + 0.45 * target.hp / target.maxHp);
     this.drawMiningCracks(target);
     this.emitBlockParticles(x, y, target.type === "dirt" ? 0xb7794c : target.type === "stone" ? 0x9ca4a7 : 0x9c82c2, 9);

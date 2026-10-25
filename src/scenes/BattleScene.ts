@@ -5,6 +5,7 @@ import {
 } from "../grid";
 import { gameState, otherPlayerId, playerById, type PlayerId, type TileType, type WeaponType } from "../state";
 import { PlayerStatusHud } from "../ui/PlayerStatusHud";
+import { playImpact, playShot } from "../sfx";
 
 const TERRAIN_STEP = 8;
 // Keep the opening distance inside the missile's normal-power flight range.
@@ -109,12 +110,21 @@ export class BattleScene extends Phaser.Scene {
     p2Right: Phaser.Input.Keyboard.Key;
   };
   private resolving = false;
+  private battleMusic?: Phaser.Sound.BaseSound;
 
   constructor() {
     super("BattleScene");
   }
 
   create(): void {
+    this.sound.stopAll();
+    this.battleMusic = this.sound.add("battle-bgm", { loop: true, volume: 0.45 });
+    this.battleMusic.play();
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.battleMusic?.stop();
+      this.battleMusic?.destroy();
+      this.battleMusic = undefined;
+    });
     this.blocks = [];
     this.activeProjectile = null;
     this.tankHitLift[1].amount = 0;
@@ -778,6 +788,7 @@ export class BattleScene extends Phaser.Scene {
     const origin = this.muzzlePosition(ownerId);
     const angle = angleOverride ?? this.aimAngle(ownerId, aimX, aimY);
     const spec = WEAPONS[weaponType];
+    playShot(this, weaponType);
     const speed = spec.speed * clamp(powerOverride ?? this.power, 0.5, 1.5);
     const dir = ownerId === 1 ? 1 : -1;
     this.aimGraphics.clear();
@@ -924,6 +935,7 @@ export class BattleScene extends Phaser.Scene {
   private resolveImpact(x: number, y: number, projectile: ProjectileState, directTank: PlayerId | null): void {
     if (this.resolving) return;
     this.resolving = true;
+    playImpact(this, projectile.weapon);
     const enemyId = otherPlayerId(projectile.ownerId);
     for (const block of [...this.blocks]) {
       if (block.ownerId === projectile.ownerId) continue;
