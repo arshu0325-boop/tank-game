@@ -241,8 +241,6 @@ export class MineScene extends Phaser.Scene {
 
   private createHud(): void {
     this.playerHud = new PlayerStatusHud(this, 25);
-    this.add.rectangle(GAME_WIDTH / 2, 210, 1250, 42, 0x111b35, 0.82)
-      .setStrokeStyle(1, 0xa5c7ff, 0.62).setDepth(20);
     this.add.rectangle(GAME_WIDTH / 2, 42, 420, 62, 0x552b18, 0.94).setStrokeStyle(4, 0xffbe43, 1).setDepth(25);
     this.add.text(GAME_WIDTH / 2, 41, "MINING PHASE", {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "31px", color: "#fff5e5",
