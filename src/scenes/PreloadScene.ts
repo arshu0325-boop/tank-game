@@ -529,6 +529,3 @@ export class PreloadScene extends Phaser.Scene {
     boomerang.refresh();
   }
 }
-
- 
- 
