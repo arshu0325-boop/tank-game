@@ -6,8 +6,6 @@ export class PlayerStatusHud {
   private readonly graphics: Phaser.GameObjects.Graphics;
   private readonly p1Name: Phaser.GameObjects.Text;
   private readonly p2Name: Phaser.GameObjects.Text;
-  private readonly p1Details: Phaser.GameObjects.Text;
-  private readonly p2Details: Phaser.GameObjects.Text;
 
   constructor(scene: Phaser.Scene, depth = 25) {
     this.graphics = scene.add.graphics().setDepth(depth);
@@ -27,10 +25,10 @@ export class PlayerStatusHud {
     };
     this.p1Name = scene.add.text(116, 28, "", nameStyle).setDepth(depth + 1);
     this.p2Name = scene.add.text(1484, 28, "", nameStyle).setOrigin(1, 0).setDepth(depth + 1);
-    this.p1Details = scene.add.text(116, 82, "", detailsStyle).setDepth(depth + 1);
-    this.p2Details = scene.add.text(1484, 82, "", detailsStyle).setOrigin(1, 0).setDepth(depth + 1);
-    scene.add.text(116, 101, "FUEL", detailsStyle).setOrigin(0, 0.5).setDepth(depth + 1);
-    scene.add.text(1484, 101, "FUEL", detailsStyle).setOrigin(1, 0.5).setDepth(depth + 1);
+    scene.add.text(116, 61, "HP", detailsStyle).setOrigin(0, 0.5).setDepth(depth + 1);
+    scene.add.text(1484, 61, "HP", detailsStyle).setOrigin(1, 0.5).setDepth(depth + 1);
+    scene.add.text(116, 87, "FUEL", detailsStyle).setOrigin(0, 0.5).setDepth(depth + 1);
+    scene.add.text(1484, 87, "FUEL", detailsStyle).setOrigin(1, 0.5).setDepth(depth + 1);
     this.drawAvatar(scene, 1, 68, 65, depth + 2);
     this.drawAvatar(scene, 2, 1532, 65, depth + 2);
     this.update(0);
@@ -44,37 +42,30 @@ export class PlayerStatusHud {
     this.drawCard(2, p2.hp, p2.fuel, p2.color, activePlayer === 2);
     this.p1Name.setText(`P1  •  ${p1.name.toUpperCase()}`);
     this.p2Name.setText(`P2  •  ${p2.name.toUpperCase()}`);
-    this.p1Details.setText(this.details(1));
-    this.p2Details.setText(this.details(2));
-  }
-
-  private details(id: PlayerId): string {
-    const player = playerById(id);
-    return `${player.hp} / ${MAX_HP} HP   •   HITS ${player.hits}`;
   }
 
   private drawCard(id: PlayerId, hp: number, fuel: number, accent: number, active: boolean): void {
     const x = id === 1 ? 22 : 1188;
-    const barX = id === 1 ? 112 : 1202;
     this.graphics.fillStyle(0x101a35, 0.94).fillRoundedRect(x, 18, 390, 94, 13);
     this.graphics.lineStyle(active ? 3 : 2, active ? 0xc38aff : accent, active ? 1 : 0.9)
       .strokeRoundedRect(x, 18, 390, 94, 13);
 
-    const barY = 54;
-    const barWidth = 280;
-    const barHeight = 22;
-    const fillWidth = Math.max(0, (barWidth - 6) * Phaser.Math.Clamp(hp / MAX_HP, 0, 1));
-    this.graphics.fillStyle(0x5d1728, 1).fillRoundedRect(barX, barY, barWidth, barHeight, 7);
-    if (fillWidth > 0) {
-      this.graphics.fillStyle(0xff344c, 1).fillRoundedRect(barX + 3, barY + 3, fillWidth, barHeight - 6, 5);
-      this.graphics.fillStyle(0xffa0aa, 0.78).fillRoundedRect(barX + 6, barY + 4, Math.max(0, fillWidth - 8), 3, 2);
+    const barX = id === 1 ? 154 : 1202;
+    const barWidth = 236;
+    const barHeight = 12;
+    const hpY = 55;
+    const hpFill = (barWidth - 4) * Phaser.Math.Clamp(hp / MAX_HP, 0, 1);
+    this.graphics.fillStyle(0x401b2b, 1).fillRoundedRect(barX, hpY, barWidth, barHeight, 4);
+    if (hpFill > 0) {
+      this.graphics.fillStyle(0xff3b61, 1).fillRoundedRect(barX + 2, hpY + 2, hpFill, barHeight - 4, 3);
+      this.graphics.fillStyle(0xffb1bc, 0.82).fillRoundedRect(barX + 5, hpY + 3, Math.max(0, hpFill - 6), 2, 1);
     }
-    this.graphics.lineStyle(2, 0x080d20, 1).strokeRoundedRect(barX, barY, barWidth, barHeight, 7);
+    this.graphics.lineStyle(1, 0x090d16, 1).strokeRoundedRect(barX, hpY, barWidth, barHeight, 4);
 
     const fuelX = id === 1 ? 154 : 1202;
-    const fuelWidth = 236;
-    const fuelY = 97;
-    const fuelHeight = 8;
+    const fuelWidth = barWidth;
+    const fuelY = 81;
+    const fuelHeight = barHeight;
     const fuelFill = (fuelWidth - 4) * Phaser.Math.Clamp(fuel / MAX_FUEL, 0, 1);
     const fuelColor = fuel <= MAX_FUEL * 0.2 ? 0xff665a : 0xffb83f;
     this.graphics.fillStyle(0x30231d, 1).fillRoundedRect(fuelX, fuelY, fuelWidth, fuelHeight, 4);

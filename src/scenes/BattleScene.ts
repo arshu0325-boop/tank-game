@@ -19,9 +19,9 @@ const TANK_EDGE_MARGIN = 28;
 const TANK_MOVE_SPEED = 190; // pixels per second
 const TANK_FUEL_PER_PIXEL = 0.04; // 4 fuel per 100 pixels
 const WEAPONS: Record<WeaponType, { label: string; damage: number; radius: number; speed: number; gravity: number; color: number }> = {
-  shell: { label: "TANK SHOT", damage: 1, radius: 23, speed: 660, gravity: 520, color: 0xffefb0 },
+  shell: { label: "TANK SHOT", damage: 3, radius: 23, speed: 660, gravity: 520, color: 0xffefb0 },
   missile: { label: "MISSILE", damage: 10, radius: 72, speed: 700, gravity: 390, color: 0xff9a38 },
-  boomerang: { label: "BOOMERANG", damage: 2, radius: 31, speed: 700, gravity: 205, color: 0x74f2ff },
+  boomerang: { label: "BOOMERANG", damage: 6.5, radius: 31, speed: 700, gravity: 205, color: 0x74f2ff },
 };
 
 interface BattleBlock {

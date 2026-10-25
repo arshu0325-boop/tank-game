@@ -503,7 +503,6 @@ export class MineScene extends Phaser.Scene {
     this.emitBlockParticles(x, y, target.type === "dirt" ? 0xb7794c : target.type === "stone" ? 0x9ca4a7 : 0x9c82c2, 9);
     this.tweens.add({ targets: target.image, angle: { from: -5, to: 5 }, yoyo: true, duration: 70, repeat: 1 });
     if (target.hp > 0) {
-      this.showMiningMessage(x, y - 12, `${target.hp} HP`, id === 1 ? "#73d8ff" : "#ff9a8c");
       return;
     }
 
