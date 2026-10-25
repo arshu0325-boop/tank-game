@@ -1,7 +1,8 @@
 export type PlayerId = 1 | 2;
 export type TileType = "dirt" | "stone" | "obsidian";
 export type WeaponType = "shell" | "missile" | "boomerang";
-export const MAX_HP = 30;
+export const MAX_HP = 25;
+export const MAX_FUEL = 50;
 
 export const TANK_CATALOG = [
   { texture: "tank-blue", name: "Vanguard", role: "Balanced", color: 0x168ceb },
@@ -44,12 +45,13 @@ export interface GameState {
 }
 
 function createPlayer(id: PlayerId, tankTexture = id === 1 ? "tank-blue" : "tank-red"): PlayerState {
+  const selectedTank = TANK_CATALOG.find((tank) => tank.texture === tankTexture);
   return {
     id,
     name: id === 1 ? "Controller" : "Duelist",
-    color: id === 1 ? 0x2496ff : 0xf04444,
+    color: selectedTank?.color ?? (id === 1 ? 0x2496ff : 0xf04444),
     hp: MAX_HP,
-    fuel: 100,
+    fuel: MAX_FUEL,
     iron: 0,
     // Small starter supplies keep the first match playable; mining adds to these.
     inventory: { dirt: 6, stone: 4, obsidian: 2 },

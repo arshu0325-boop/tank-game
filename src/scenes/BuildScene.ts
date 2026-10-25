@@ -28,7 +28,7 @@ export class BuildScene extends Phaser.Scene {
   private timerGraphics!: Phaser.GameObjects.Graphics;
   private timerText!: Phaser.GameObjects.Text;
   private selectionText!: Phaser.GameObjects.Text;
-  private inventoryLabels: Partial<Record<TileType, Phaser.GameObjects.Text>> = {};
+  private inventoryLabels: Record<PlayerId, Partial<Record<TileType, Phaser.GameObjects.Text>>> = { 1: {}, 2: {} };
   private keyboardKeys!: {
     one: Phaser.Input.Keyboard.Key;
     two: Phaser.Input.Keyboard.Key;
@@ -172,7 +172,7 @@ export class BuildScene extends Phaser.Scene {
   }
 
   private createHud(): void {
-    this.hudGraphics = this.add.graphics().setDepth(20);
+    this.hudGraphics = this.add.graphics().setDepth(26);
     this.playerHud = new PlayerStatusHud(this, 20);
     this.timerGraphics = this.add.graphics().setDepth(22);
     const phaseBadge = this.add.graphics().setDepth(20);
@@ -192,34 +192,47 @@ export class BuildScene extends Phaser.Scene {
     this.tweens.add({ targets: this.timerGraphics, alpha: 0.72, duration: 520, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
     this.tweens.add({ targets: this.timerText, scale: 1.045, duration: 720, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
 
-    this.add.rectangle(GAME_WIDTH / 2, 817, 1120, 112, 0x171b20, 0.96).setStrokeStyle(3, 0x8c9194, 1).setDepth(20);
-    this.makeTileButton(545, 815, "dirt", "1");
-    this.makeTileButton(675, 815, "stone", "2");
-    this.makeTileButton(805, 815, "obsidian", "3");
-    this.add.rectangle(405, 815, 100, 70, 0x303438, 1).setStrokeStyle(3, 0xb0b4b6, 1).setDepth(22);
-    this.add.text(405, 815, "UNDO\n(Z)", { fontFamily: "Arial Black, Arial, sans-serif", fontSize: "20px", color: "#ffffff", align: "center", stroke: "#111111", strokeThickness: 3 }).setOrigin(0.5).setDepth(23);
-    this.add.rectangle(1288, 815, 180, 74, 0x248334, 1).setStrokeStyle(5, 0x6cff69, 1).setDepth(22);
-    this.add.text(1288, 815, "READY", { fontFamily: "Arial Black, Arial, sans-serif", fontSize: "32px", color: "#ffffff", stroke: "#0c3912", strokeThickness: 5 }).setOrigin(0.5).setDepth(23);
-    this.selectionText = this.add.text(GAME_WIDTH / 2, 883, "Select a tile, then drag across your grid to place several blocks. Keep the tank area clear.", {
-      fontFamily: "Arial", fontSize: "16px", color: "#e7e9e8", stroke: "#171b20", strokeThickness: 3,
+    this.add.rectangle(GAME_WIDTH / 2, 817, 1520, 112, 0x111923, 0.97).setStrokeStyle(3, 0x8cabbc, 0.95).setDepth(20);
+    this.add.rectangle(358, 817, 600, 96, 0x12334b, 0.68).setStrokeStyle(2, 0x3aa7eb, 0.85).setDepth(21);
+    this.add.rectangle(1242, 817, 600, 96, 0x48252c, 0.68).setStrokeStyle(2, 0xf05b66, 0.85).setDepth(21);
+    this.add.rectangle(800, 817, 250, 96, 0x1b2733, 0.96).setStrokeStyle(2, 0xb0c4d0, 0.9).setDepth(21);
+    this.add.text(358, 779, "P1 BLOCKS", {
+      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "15px", color: "#8ed7ff", stroke: "#101820", strokeThickness: 4,
+    }).setOrigin(0.5).setDepth(23);
+    this.add.text(1242, 779, "P2 BLOCKS", {
+      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "15px", color: "#ffaaa8", stroke: "#101820", strokeThickness: 4,
+    }).setOrigin(0.5).setDepth(23);
+    for (const [playerId, centers] of [[1, [168, 350, 532]], [2, [1068, 1250, 1432]]] as const) {
+      const types: TileType[] = ["dirt", "stone", "obsidian"];
+      centers.forEach((center, index) => this.makeTileButton(center, 831, types[index], playerId));
+    }
+    this.add.rectangle(800, 779, 118, 28, 0x303b46, 1).setStrokeStyle(2, 0xc1d3df, 1).setDepth(22);
+    this.add.text(800, 779, "UNDO  •  Z", {
+      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "14px", color: "#ffffff", stroke: "#111111", strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(23);
+    this.add.rectangle(800, 831, 166, 64, 0x238338, 1).setStrokeStyle(4, 0x75ff77, 1).setDepth(22);
+    this.add.text(800, 831, "READY", {
+      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "29px", color: "#ffffff", stroke: "#0c3912", strokeThickness: 5,
+    }).setOrigin(0.5).setDepth(23);
+    this.selectionText = this.add.text(GAME_WIDTH / 2, 883, "SELECT A BLOCK  •  DRAG ON YOUR GRID TO PLACE  •  1/2/3 SWITCH MATERIAL  •  KEEP TANK AREA CLEAR", {
+      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "13px", color: "#e7e9e8", stroke: "#171b20", strokeThickness: 3,
     }).setOrigin(0.5).setDepth(24);
   }
 
-  private makeTileButton(x: number, y: number, type: TileType, number: string): void {
-    const tint = type === "dirt" ? 0x3f332a : type === "stone" ? 0x343a40 : 0x292238;
-    this.add.rectangle(x, y, 112, 70, tint, 1).setStrokeStyle(3, 0xb0b4b6, 1).setDepth(22);
-    addBlockImage(this, x - 20, y - 5, type, { size: 32 }).setDepth(23);
-    this.add.circle(x - 49, y - 24, 10, 0x111820, 1).setStrokeStyle(1, 0xd5e3e9, 0.9).setDepth(24);
-    this.add.text(x - 49, y - 24, number, {
-      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "12px", color: "#ffffff", stroke: "#000000", strokeThickness: 2,
-    }).setOrigin(0.5).setDepth(25);
-    this.inventoryLabels[type] = this.add.text(x + 1, y - 5, "", {
+  private makeTileButton(x: number, y: number, type: TileType, playerId: PlayerId): void {
+    const player = playerById(playerId);
+    const panelFill = playerId === 1 ? 0x173d58 : 0x512a31;
+    const panel = this.add.rectangle(x, y, 158, 70, panelFill, 1)
+      .setStrokeStyle(2, player.color, 0.95).setDepth(22);
+    addBlockImage(this, x - 48, y - 2, type, { size: TILE_SIZE }).setDepth(23);
+    this.add.text(x + 17, y - 18, type === "obsidian" ? "OBSIDIAN" : type.toUpperCase(), {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "11px", color: "#ffffff", stroke: "#111111", strokeThickness: 3,
-      lineSpacing: 1,
-    }).setOrigin(0, 0.5).setDepth(24);
-    this.add.text(x + 17, y + 22, type === "obsidian" ? "OBSIDIAN" : type.toUpperCase(), {
-      fontFamily: "Arial Black, Arial, sans-serif", fontSize: type === "obsidian" ? "11px" : "13px", color: "#ffffff", stroke: "#111111", strokeThickness: 3,
     }).setOrigin(0.5).setDepth(24);
+    this.inventoryLabels[playerId][type] = this.add.text(x + 17, y + 11, `${player.inventory[type]}`, {
+      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "24px", color: playerId === 1 ? "#a7e4ff" : "#ffc1bd",
+      stroke: "#101820", strokeThickness: 4,
+    }).setOrigin(0.5).setDepth(24);
+    panel.setStrokeStyle(2, player.color, 0.95);
   }
 
   private renderExistingBlocks(): void {
@@ -230,12 +243,16 @@ export class BuildScene extends Phaser.Scene {
 
   private handlePointerDown(pointer: Phaser.Input.Pointer): void {
     if (this.transitioning) return;
-    if (pointer.y > 770) {
-      if (pointer.x >= 350 && pointer.x <= 460) this.undoLastBlock();
-      else if (pointer.x >= 485 && pointer.x <= 600) this.selectTile("dirt");
-      else if (pointer.x >= 615 && pointer.x <= 735) this.selectTile("stone");
-      else if (pointer.x >= 745 && pointer.x <= 865) this.selectTile("obsidian");
-      else if (pointer.x >= 1180 && pointer.x <= 1400) this.finishBuild();
+    if (pointer.y >= 760) {
+      if (pointer.x >= 740 && pointer.x <= 860 && pointer.y <= 795) {
+        this.undoLastBlock();
+      } else if (pointer.x >= 715 && pointer.x <= 885 && pointer.y >= 800 && pointer.y <= 866) {
+        this.finishBuild();
+      } else if (pointer.y >= 795 && pointer.y <= 867) {
+        const tileCenters = [168, 350, 532, 1068, 1250, 1432];
+        const type = (["dirt", "stone", "obsidian"] as TileType[])[tileCenters.findIndex((center) => Math.abs(pointer.x - center) <= 80) % 3];
+        if (type) this.selectTile(type);
+      }
       return;
     }
     if (pointer.y < BUILD_ORIGIN_Y || pointer.y >= BUILD_ORIGIN_Y + BUILD_ROWS * TILE_SIZE) return;
@@ -343,16 +360,17 @@ export class BuildScene extends Phaser.Scene {
   private updateHud(): void {
     this.hudGraphics.clear();
     this.playerHud.update();
-    for (const type of ["dirt", "stone", "obsidian"] as TileType[]) {
-      const x = type === "dirt" ? 545 : type === "stone" ? 675 : 805;
-      if (gameState.selectedTile === type) {
-        this.hudGraphics.lineStyle(5, 0x48d9ff, 1).strokeRoundedRect(x - 58, 779, 116, 72, 5);
-      }
-    }
-    const p1 = playerById(1);
-    const p2 = playerById(2);
-    for (const type of ["dirt", "stone", "obsidian"] as TileType[]) {
-      this.inventoryLabels[type]?.setText(`P1 ${p1.inventory[type]}\nP2 ${p2.inventory[type]}`);
+    const types: TileType[] = ["dirt", "stone", "obsidian"];
+    const centers: Record<PlayerId, number[]> = { 1: [168, 350, 532], 2: [1068, 1250, 1432] };
+    for (const id of [1, 2] as PlayerId[]) {
+      const player = playerById(id);
+      types.forEach((type, index) => {
+        this.inventoryLabels[id][type]?.setText(`${player.inventory[type]}`);
+        if (gameState.selectedTile === type) {
+          this.hudGraphics.lineStyle(4, id === 1 ? 0x58c8ff : 0xff7777, 1)
+            .strokeRoundedRect(centers[id][index] - 81, 794, 162, 74, 8);
+        }
+      });
     }
   }
 
