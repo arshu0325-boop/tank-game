@@ -1,55 +1,90 @@
-# TankCraft PvP — TypeScript starter
+# 🚀 Tank Game - Setup & Play Guide
 
-A local two-player tank game prototype built with Phaser 3 and TypeScript. All tile and tank textures are generated in code, so this version does not require downloaded art assets.
+Welcome to the Tank Game repository! It's a turn based tactical artillery combat game, built in TypeScript, Phaser 3 and Vite.
 
-## Included scenes and source files
+Just follow the steps below to get the game up and running on a completely fresh laptop.
 
-```text
-src/
-  scenes/
-    BattleScene.ts
-    BuildScene.ts
-    MenuScene.ts
-    MineScene.ts
-    PreloadScene.ts
-    ResultScene.ts
-  config.ts
-  grid.ts
-  main.ts
-  state.ts
+---
+
+## 🛠️ Step 1: Install Prerequisites
+
+Before you go cloning or running the project your fresh laptop will need a JS runtime environment.
+
+1. Install Node.js (which comes with npm):
+* Download and install the LTS (Long Term Support) version of Node.js.
+* Verify the installation by opening your terminal (PowerShell, Command Prompt, or Terminal) and running:
+```bash
+node -v
+npm -v
+
 ```
 
-The project also includes `package.json`, `tsconfig.json`, and `index.html` so it can be run locally.
 
-## Run it
 
-Install Node.js (LTS), open a terminal in this folder, and run:
+
+2. Install Git (optional if you're cloning via repository):
+* Download and install Git (https://git-scm.com/)
+
+
+
+---
+
+## 📦 Step 2: Clone or Open the Project
+
+1. Open up your terminal and clone the repository (or just open the project folder if you already have the source files downloaded):
+```bash
+git clone https://github.com/RajatGarud/tank-game.git
+cd tank-game
+
+```
+
+
+2. Open the folder in your code editor (e.g. Visual Studio Code):
+```bash
+code .
+
+```
+
+
+
+---
+
+## 📥 Step 3: Install Dependencies
+
+As node_modules isn't under version control you'll need to install the project dependencies as listed in package.json.
+
+Run the following command in your project terminal:
 
 ```bash
 npm install
-npm run dev
+
 ```
 
-Open the local URL printed by Vite. To verify a production bundle:
+---
+
+## 🚀 Step 4: Run the Development Server
+
+Once the installation is complete, start the local development server:
 
 ```bash
-npm run build
+npm run dev
+
 ```
 
-## Current gameplay
+* Vite will spin up a local dev server (typically at http://localhost:5173 or similar local port).
+* Control-click or copy and paste that URL into your web browser to play the game!
 
-1. **Mine phase (23 seconds):** click blocks on the left half to give resources to P1 and on the right half for P2. Blocks have Minecraft-like pixel textures; iron ore adds iron to the player's counter.
-2. **Build phase (15 seconds):** select dirt, stone, or obsidian using the buttons or keys `1`, `2`, and `3`, then click squares in the corresponding player's grid. `Z` undoes the most recent placement. The tank opening is kept clear.
-3. **Battle phase:** players take turns. Aim with the mouse and click or press `Space` to fire. `Up`/`Down` changes shot power; keys `1`, `2`, and `3` select tank shot, missile, or boomerang. Missile and boomerang charge by damaging or breaking enemy blocks. Explosions damage nearby blocks and deform the ground into craters.
+---
 
-## Prototype rules
+## 🎮 Game Controls Reference
 
-- Dirt: 2 HP; stone: 4 HP; obsidian: 10 HP.
-- Tank shot: 1 damage; missile: 10 damage; boomerang: 2 damage.
-- Missile radius is larger than the standard shell radius and creates a deeper crater.
-- The boomerang loops past the enemy and returns toward the rear of the tank if it does not hit a wall first.
-- Starter blocks are supplied so players can still build if they do not mine much.
+* Aiming: move your mouse cursor across the battlefield to adjust the cannon angle.
+* Firing: Click anywhere in the arena or press the Spacebar to fire. Hold to charge up extra power!
+* Power adjustment: press the Up / Down arrow keys to adjust your shot power.
+* **Tank Movement:**
+* Player 1: Use A (Left) and D (Right) keys.
+* Player 2: Use the Left and Right Arrow keys.
+*(Note: Movement uses a finite amount of fuel based on the actual distance travelled).*
 
-## Notes
 
-This is a playable first-pass prototype, not a final polished release. Timings, terrain, damage tuning, and controls are intentionally kept in a few constants near the tops of the scene files so they can be adjusted easily. Multiplayer is local/shared-screen; online networking and audio are not included.
+* Weapon selection: Press 1 (Shell), 2 (Missile) or 3 (Boomerang) or click on the weapon icons at the bottom of the HUD.
