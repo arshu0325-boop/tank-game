@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { GAME_HEIGHT, GAME_WIDTH } from "../grid";
-import { gameState, MAX_HP, playerById, resetGameState } from "../state";
+import { gameState, playerById, resetGameState } from "../state";
 
 const DISPLAY_FONT = "Trebuchet MS, Arial, sans-serif";
 const BODY_FONT = "Trebuchet MS, Arial, sans-serif";
@@ -41,8 +41,8 @@ export class ResultScene extends Phaser.Scene {
 
     const p1 = playerById(1);
     const p2 = playerById(2);
-    this.makePlayerCard(470, "P1: Controller", p1.hp, p1.shotsFired, p1.hits, 0x248de2, 0);
-    this.makePlayerCard(1130, "P2: Duelist", p2.hp, p2.shotsFired, p2.hits, 0xe34141, 140);
+    this.makePlayerCard(470, "P1: Controller", p1.shotsFired, 0);
+    this.makePlayerCard(1130, "P2: Duelist", p2.shotsFired, 140);
 
     this.makeButton(GAME_WIDTH / 2 - 190, 744, 330, 74, "REMATCH", () => {
       resetGameState();
@@ -54,23 +54,16 @@ export class ResultScene extends Phaser.Scene {
     }, 0x3c647e);
   }
 
-  private makePlayerCard(x: number, title: string, hp: number, shots: number, hits: number, color: number, delay: number): void {
+  private makePlayerCard(x: number, title: string, shots: number, delay: number): void {
     const card = this.add.container(x, 490).setDepth(4).setAlpha(0).setY(535);
     const heading = this.add.text(0, -57, title, {
       fontFamily: DISPLAY_FONT, fontStyle: "bold", fontSize: "32px", color: "#ffffff", stroke: "#111820", strokeThickness: 7,
       shadow: { color: "#000000", blur: 5, offsetX: 2, offsetY: 3, fill: true },
     }).setOrigin(0.5);
-    const health = this.add.text(0, 2, `REMAINING HP: ${hp}`, {
-      fontFamily: DISPLAY_FONT, fontStyle: "bold", fontSize: "23px", color: "#ffffff", stroke: "#111820", strokeThickness: 6,
-    }).setOrigin(0.5);
-    const stats = this.add.text(0, 42, `SHOTS ${shots}     HITS ${hits}`, {
+    const stats = this.add.text(0, 18, `SHOTS ${shots}`, {
       fontFamily: BODY_FONT, fontStyle: "bold", fontSize: "21px", color: "#ffffff", stroke: "#111820", strokeThickness: 5,
     }).setOrigin(0.5);
-    const barBack = this.add.graphics().fillStyle(0x101418, 1).fillRoundedRect(-145, 68, 290, 16, 7);
-    barBack.lineStyle(2, 0x080b0d, 1).strokeRoundedRect(-145, 68, 290, 16, 7);
-    const bar = this.add.graphics().fillStyle(0x51d35d, 1)
-      .fillRoundedRect(-141, 72, Math.max(0, 282 * hp / MAX_HP), 8, 4);
-    card.add([heading, health, stats, barBack, bar]);
+    card.add([heading, stats]);
     this.tweens.add({ targets: card, alpha: 1, y: 490, duration: 420, delay: 220 + delay, ease: "Back.Out" });
     this.tweens.add({ targets: card, y: 486, duration: 1250, delay: 720 + delay, yoyo: true, repeat: -1, ease: "Sine.InOut" });
   }
