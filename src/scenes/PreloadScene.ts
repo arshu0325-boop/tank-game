@@ -19,7 +19,6 @@ export class PreloadScene extends Phaser.Scene {
     this.createPixelTile("tile-grass", "#95572f", ["#713d21", "#bd7540", "#a95e30", "#804625"], true);
     this.createPixelTile("tile-stone", "#788489", ["#536166", "#a6b3b7", "#66747a", "#c0c8ca"]);
     this.createPixelTile("tile-obsidian", "#201a38", ["#382857", "#5a3f88", "#161326", "#7858bd"]);
-    this.createOreTile("ore-iron", false);
     this.createOreTile("ore-coal", true);
     this.createTankTexture("tank-blue", "#087de0", "#28c5ff", false, "balanced");
     this.createTankTexture("tank-blue-preview", "#087de0", "#28c5ff", false, "balanced", true);

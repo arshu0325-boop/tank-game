@@ -7,7 +7,6 @@ interface MineCell {
   col: number;
   row: number;
   type: TileType;
-  ore?: "iron" | "coal";
   hp: number;
   maxHp: number;
   image: Phaser.GameObjects.Image;
@@ -41,7 +40,7 @@ export class MineScene extends Phaser.Scene {
   private timerGraphics!: Phaser.GameObjects.Graphics;
   private resourcePanelGraphics!: Phaser.GameObjects.Graphics;
   private timeText!: Phaser.GameObjects.Text;
-  private resourceLabels: Record<PlayerId, Partial<Record<TileType | "iron", Phaser.GameObjects.Text>>> = { 1: {}, 2: {} };
+  private resourceLabels: Record<PlayerId, Partial<Record<TileType, Phaser.GameObjects.Text>>> = { 1: {}, 2: {} };
   private hintText!: Phaser.GameObjects.Text;
   private tanks!: Record<PlayerId, Phaser.GameObjects.Image>;
   private drills!: Record<PlayerId, Phaser.GameObjects.Image>;
@@ -178,7 +177,6 @@ export class MineScene extends Phaser.Scene {
       this.surfaceRows.push(surface);
       for (let row = surface; row < MINE_ROWS; row++) {
         let type: TileType;
-        let ore: "iron" | "coal" | undefined;
         const depth = row - surface;
         if (depth < 3) {
           type = "dirt";
@@ -186,14 +184,13 @@ export class MineScene extends Phaser.Scene {
           type = "obsidian";
         } else {
           type = "stone";
-          if (depth >= 3 && Math.random() < 0.11) ore = "iron";
         }
         const image = addBlockImage(
           this,
           col * TILE_SIZE + TILE_SIZE / 2,
           MINE_ORIGIN_Y + row * TILE_SIZE + TILE_SIZE / 2,
           type,
-          { surface: row === surface, ore },
+          { surface: row === surface },
         ).setDepth(4);
         const maxHp = this.getBlockHp(type);
         const crack = this.add.graphics().setDepth(6);
@@ -202,7 +199,6 @@ export class MineScene extends Phaser.Scene {
           col,
           row,
           type,
-          ore,
           hp: maxHp,
           maxHp,
           image,
@@ -269,8 +265,8 @@ export class MineScene extends Phaser.Scene {
       stroke: "#101820", strokeThickness: 3,
     }).setOrigin(0.5).setDepth(27);
 
-    const resourceTypes: Array<TileType | "iron"> = ["dirt", "stone", "obsidian", "iron"];
-    const centers: Record<PlayerId, number[]> = { 1: [102, 294, 486, 678], 2: [922, 1114, 1306, 1498] };
+    const resourceTypes: TileType[] = ["dirt", "stone", "obsidian"];
+    const centers: Record<PlayerId, number[]> = { 1: [168, 400, 632], 2: [968, 1200, 1432] };
     for (const id of [1, 2] as PlayerId[]) {
       const player = playerById(id);
       resourceTypes.forEach((type, index) => {
@@ -278,10 +274,7 @@ export class MineScene extends Phaser.Scene {
         const fill = id === 1 ? 0x173d58 : 0x512a31;
         this.add.rectangle(x, 873, 174, 48, fill, 1)
           .setStrokeStyle(2, player.color, 0.95).setDepth(26);
-        addBlockImage(this, x - 49, 873, type === "iron" ? "stone" : type, {
-          size: 38,
-          ...(type === "iron" ? { ore: "iron" as const } : {}),
-        }).setDepth(27);
+        addBlockImage(this, x - 49, 873, type, { size: 38 }).setDepth(27);
         this.add.text(x + 22, 862, type.toUpperCase(), {
           fontFamily: "Arial Black, Arial, sans-serif", fontSize: "10px", color: "#ffffff",
           stroke: "#101820", strokeThickness: 3,
@@ -508,8 +501,7 @@ export class MineScene extends Phaser.Scene {
 
     const player = playerById(id);
     player.inventory[target.type] += 1;
-    if (target.ore === "iron") player.iron += 1;
-    this.emitBlockParticles(x, y, target.ore === "iron" ? 0xffd05b : 0xd3a06e, 26);
+    this.emitBlockParticles(x, y, 0xd3a06e, 26);
     this.tweens.add({
       targets: target.image, scale: 0.12, angle: Phaser.Math.Between(-12, 12), alpha: 0, duration: 240,
       onComplete: () => target.image.destroy(),
@@ -517,8 +509,7 @@ export class MineScene extends Phaser.Scene {
     target.crack?.destroy();
     this.cells.delete(this.cellKey(target.col, target.row));
     this.drawMineSurface();
-    const itemLabel = target.ore === "iron" ? `+1 ${target.type}  +1 iron` : `+1 ${target.type}`;
-    this.showMiningMessage(x, y - 10, itemLabel, id === 1 ? "#73d8ff" : "#ff9a8c");
+    this.showMiningMessage(x, y - 10, `+1 ${target.type}`, id === 1 ? "#73d8ff" : "#ff9a8c");
   }
 
   private emitBlockParticles(x: number, y: number, color: number, count: number): void {
@@ -546,7 +537,6 @@ export class MineScene extends Phaser.Scene {
       for (const type of ["dirt", "stone", "obsidian"] as TileType[]) {
         this.resourceLabels[id][type]?.setText(`${player.inventory[type]}`);
       }
-      this.resourceLabels[id].iron?.setText(`${player.iron}`);
     }
   }
 

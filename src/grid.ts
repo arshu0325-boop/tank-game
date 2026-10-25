@@ -91,8 +91,7 @@ export function baseTerrainY(x: number, worldWidth = GAME_WIDTH): number {
   return clamp(575 + valley + rolling, 535, 725);
 }
 
-export function tileKey(type: TileType, isSurface = false, ore?: "iron" | "coal"): string {
-  if (ore === "iron") return "ore-iron";
+export function tileKey(type: TileType, isSurface = false, ore?: "coal"): string {
   if (ore === "coal") return "ore-coal";
   if (isSurface && type === "dirt") return "tile-grass";
   return TILE_TEXTURE[type];
@@ -103,7 +102,7 @@ export function addBlockImage(
   x: number,
   y: number,
   type: TileType,
-  options: { surface?: boolean; ore?: "iron" | "coal"; size?: number; alpha?: number } = {},
+  options: { surface?: boolean; ore?: "coal"; size?: number; alpha?: number } = {},
 ): Phaser.GameObjects.Image {
   const image = scene.add.image(x, y, tileKey(type, options.surface, options.ore));
   image.setDisplaySize(options.size ?? TILE_SIZE, options.size ?? TILE_SIZE);

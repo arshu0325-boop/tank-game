@@ -17,6 +17,7 @@ interface PlacedDisplay {
 }
 
 export class BuildScene extends Phaser.Scene {
+  private activeBuilder: PlayerId = 1;
   private placed = new Map<string, PlacedDisplay>();
   private undoStack: string[] = [];
   private elapsed = 0;
@@ -26,9 +27,21 @@ export class BuildScene extends Phaser.Scene {
   private hudGraphics!: Phaser.GameObjects.Graphics;
   private playerHud!: PlayerStatusHud;
   private timerGraphics!: Phaser.GameObjects.Graphics;
+  private uiCamera!: Phaser.Cameras.Scene2D.Camera;
+  private readonly mainCameraIgnored = new Set<Phaser.GameObjects.GameObject>();
+  private readonly uiCameraIgnored = new Set<Phaser.GameObjects.GameObject>();
   private timerText!: Phaser.GameObjects.Text;
+  private builderText!: Phaser.GameObjects.Text;
+  private readyText!: Phaser.GameObjects.Text;
+  private tanks!: Record<PlayerId, Phaser.GameObjects.Image>;
   private selectionText!: Phaser.GameObjects.Text;
   private inventoryLabels: Record<PlayerId, Partial<Record<TileType, Phaser.GameObjects.Text>>> = { 1: {}, 2: {} };
+  private tileButtons: Record<PlayerId, Array<{
+    panel: Phaser.GameObjects.Rectangle;
+    icon: Phaser.GameObjects.Image;
+    label: Phaser.GameObjects.Text;
+    count: Phaser.GameObjects.Text;
+  }>> = { 1: [], 2: [] };
   private keyboardKeys!: {
     one: Phaser.Input.Keyboard.Key;
     two: Phaser.Input.Keyboard.Key;
@@ -42,19 +55,35 @@ export class BuildScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.activeBuilder = 1;
+    this.elapsed = 0;
+    this.timeLeft = BUILD_SECONDS;
+    this.transitioning = false;
+    this.placementPointerId = null;
+    this.undoStack = [];
+    this.placed = new Map();
+    this.tileButtons = { 1: [], 2: [] };
+    this.inventoryLabels = { 1: {}, 2: {} };
+    this.mainCameraIgnored.clear();
+    this.uiCameraIgnored.clear();
     const background = gameState.nightMode ? "battle-night-background" : "battle-day-background";
     this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, background)
-      .setDisplaySize(GAME_WIDTH, GAME_HEIGHT).setDepth(-10);
+      .setDisplaySize(GAME_WIDTH + 1000, GAME_HEIGHT).setDepth(-10);
     this.drawGround();
     this.drawBuildGrids();
     const p1FacesLeftByDefault = playerById(1).tankTexture === "tank-red";
     const p2FacesLeftByDefault = playerById(2).tankTexture === "tank-red";
-    this.add.image(280, 590, `${playerById(1).tankTexture}-preview`).setOrigin(0.5, 1)
-      .setFlipX(p1FacesLeftByDefault).setDepth(6);
-    this.add.image(1320, 590, `${playerById(2).tankTexture}-preview`).setOrigin(0.5, 1)
-      .setFlipX(!p2FacesLeftByDefault).setDepth(6);
+    this.tanks = {
+      1: this.add.image(280, 590, `${playerById(1).tankTexture}-preview`).setOrigin(0.5, 1)
+        .setFlipX(p1FacesLeftByDefault).setDepth(6),
+      2: this.add.image(1320, 590, `${playerById(2).tankTexture}-preview`).setOrigin(0.5, 1)
+        .setFlipX(!p2FacesLeftByDefault).setDepth(6),
+    };
     this.createHud();
     this.renderExistingBlocks();
+    this.uiCamera = this.cameras.add(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    this.syncCameraLayers();
+    this.focusCameraOnBuilder(false);
 
     this.input.on("pointerdown", this.handlePointerDown, this);
     this.input.on("pointermove", this.handlePointerMove, this);
@@ -74,6 +103,7 @@ export class BuildScene extends Phaser.Scene {
 
   update(_time: number, delta: number): void {
     if (this.transitioning) return;
+    this.syncCameraLayers();
     this.elapsed += delta / 1000;
     this.timeLeft = Math.max(0, BUILD_SECONDS - this.elapsed);
     this.timerText.setText(formatTime(this.timeLeft));
@@ -88,12 +118,42 @@ export class BuildScene extends Phaser.Scene {
     if (this.timeLeft <= 0) this.finishBuild();
   }
 
+  private syncCameraLayers(): void {
+    const objects = this.children.list as Array<Phaser.GameObjects.GameObject & { depth: number }>;
+    for (const object of objects) {
+      if (object.depth >= 20) {
+        if (!this.mainCameraIgnored.has(object)) {
+          this.cameras.main.ignore(object);
+          this.mainCameraIgnored.add(object);
+        }
+      } else if (!this.uiCameraIgnored.has(object)) {
+        this.uiCamera.ignore(object);
+        this.uiCameraIgnored.add(object);
+      }
+    }
+  }
+
+  private focusCameraOnBuilder(animate: boolean): void {
+    const camera = this.cameras.main;
+    const zoom = 2;
+    const tankCenter = this.tanks[this.activeBuilder].getCenter();
+    // Phaser scroll values are screen-pixel offsets; centerOn accounts for zoom.
+    const scrollX = tankCenter.x - GAME_WIDTH / 2;
+    const scrollY = tankCenter.y - GAME_HEIGHT / 2;
+    camera.setZoom(zoom);
+    if (animate) {
+      this.tweens.add({ targets: camera, scrollX, scrollY, duration: 450, ease: "Sine.easeInOut" });
+    } else {
+      camera.setScroll(scrollX, scrollY);
+    }
+  }
+
   private drawGround(): void {
     const g = this.add.graphics().setDepth(1);
     const night = gameState.nightMode;
     const surface: Array<[number, number]> = [
-      [0, 590], [140, 567], [320, 590], [470, 575], [640, 625], [800, 670],
-      [960, 630], [1120, 580], [1300, 590], [1450, 565], [1600, 590],
+      [-500, 590], [0, 590], [140, 567], [320, 590], [470, 575], [640, 625], [800, 670],
+      [960, 630], [1120, 580], [1300, 590], [1450, 565], [1600, 590], [2100, 590],
     ];
     const surfaceY = (x: number): number => {
       for (let i = 1; i < surface.length; i++) {
@@ -110,8 +170,8 @@ export class BuildScene extends Phaser.Scene {
         if (index === 0) g.moveTo(x, y + topOffset); else g.lineTo(x, y + topOffset);
       });
       if (bottomOffset === null) {
-        g.lineTo(GAME_WIDTH, GAME_HEIGHT);
-        g.lineTo(0, GAME_HEIGHT);
+        g.lineTo(surface[surface.length - 1][0], GAME_HEIGHT);
+        g.lineTo(surface[0][0], GAME_HEIGHT);
       } else {
         for (let i = surface.length - 1; i >= 0; i--) {
           const [x, y] = surface[i];
@@ -126,7 +186,7 @@ export class BuildScene extends Phaser.Scene {
     drawBand(0, 88, night ? 0x65434a : 0x8b512d);
     drawBand(0, 13, night ? 0x3f713d : 0x57933a);
 
-    for (let x = 22; x < GAME_WIDTH; x += 34) {
+    for (let x = -500; x < GAME_WIDTH + 500; x += 34) {
       for (let depth = 32; depth < 360; depth += 33) {
         const seed = Math.floor(x * 11 + depth * 5);
         const y = surfaceY(x) + depth + Math.sin((x + depth) * 0.07) * 3;
@@ -191,6 +251,10 @@ export class BuildScene extends Phaser.Scene {
     this.drawTimerBar();
     this.tweens.add({ targets: this.timerGraphics, alpha: 0.72, duration: 520, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
     this.tweens.add({ targets: this.timerText, scale: 1.045, duration: 720, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
+    this.builderText = this.add.text(GAME_WIDTH / 2, 174, "PLAYER 1  •  BUILD YOUR DEFENSE", {
+      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "20px", color: "#bfe8ff",
+      stroke: "#101820", strokeThickness: 5,
+    }).setOrigin(0.5).setDepth(21);
 
     this.add.rectangle(GAME_WIDTH / 2, 817, 1520, 112, 0x111923, 0.97).setStrokeStyle(3, 0x8cabbc, 0.95).setDepth(20);
     this.add.rectangle(358, 817, 600, 96, 0x12334b, 0.68).setStrokeStyle(2, 0x3aa7eb, 0.85).setDepth(21);
@@ -211,7 +275,7 @@ export class BuildScene extends Phaser.Scene {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "14px", color: "#ffffff", stroke: "#111111", strokeThickness: 3,
     }).setOrigin(0.5).setDepth(23);
     this.add.rectangle(800, 831, 166, 64, 0x238338, 1).setStrokeStyle(4, 0x75ff77, 1).setDepth(22);
-    this.add.text(800, 831, "READY", {
+    this.readyText = this.add.text(800, 831, "READY", {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "29px", color: "#ffffff", stroke: "#0c3912", strokeThickness: 5,
     }).setOrigin(0.5).setDepth(23);
     this.selectionText = this.add.text(GAME_WIDTH / 2, 883, "SELECT A BLOCK  •  DRAG ON YOUR GRID TO PLACE  •  1/2/3 SWITCH MATERIAL  •  KEEP TANK AREA CLEAR", {
@@ -224,14 +288,16 @@ export class BuildScene extends Phaser.Scene {
     const panelFill = playerId === 1 ? 0x173d58 : 0x512a31;
     const panel = this.add.rectangle(x, y, 158, 70, panelFill, 1)
       .setStrokeStyle(2, player.color, 0.95).setDepth(22);
-    addBlockImage(this, x - 48, y - 2, type, { size: TILE_SIZE }).setDepth(23);
-    this.add.text(x + 17, y - 18, type === "obsidian" ? "OBSIDIAN" : type.toUpperCase(), {
+    const icon = addBlockImage(this, x - 48, y - 2, type, { size: TILE_SIZE }).setDepth(23);
+    const label = this.add.text(x + 17, y - 18, type === "obsidian" ? "OBSIDIAN" : type.toUpperCase(), {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "11px", color: "#ffffff", stroke: "#111111", strokeThickness: 3,
     }).setOrigin(0.5).setDepth(24);
-    this.inventoryLabels[playerId][type] = this.add.text(x + 17, y + 11, `${player.inventory[type]}`, {
+    const count = this.add.text(x + 17, y + 11, `${player.inventory[type]}`, {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "24px", color: playerId === 1 ? "#a7e4ff" : "#ffc1bd",
       stroke: "#101820", strokeThickness: 4,
     }).setOrigin(0.5).setDepth(24);
+    this.inventoryLabels[playerId][type] = count;
+    this.tileButtons[playerId].push({ panel, icon, label, count });
     panel.setStrokeStyle(2, player.color, 0.95);
   }
 
@@ -250,12 +316,20 @@ export class BuildScene extends Phaser.Scene {
         this.finishBuild();
       } else if (pointer.y >= 795 && pointer.y <= 867) {
         const tileCenters = [168, 350, 532, 1068, 1250, 1432];
-        const type = (["dirt", "stone", "obsidian"] as TileType[])[tileCenters.findIndex((center) => Math.abs(pointer.x - center) <= 80) % 3];
-        if (type) this.selectTile(type);
+        const buttonIndex = tileCenters.findIndex((center) => Math.abs(pointer.x - center) <= 80);
+        if (buttonIndex >= 0) {
+          const ownerId = buttonIndex < 3 ? 1 : 2;
+          if (ownerId === this.activeBuilder) {
+            this.selectTile((["dirt", "stone", "obsidian"] as TileType[])[buttonIndex % 3]);
+          } else {
+            this.selectionText.setText(`PLAYER ${this.activeBuilder} IS BUILDING NOW.`);
+          }
+        }
       }
       return;
     }
-    if (pointer.y < BUILD_ORIGIN_Y || pointer.y >= BUILD_ORIGIN_Y + BUILD_ROWS * TILE_SIZE) return;
+    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    if (worldPoint.y < BUILD_ORIGIN_Y || worldPoint.y >= BUILD_ORIGIN_Y + BUILD_ROWS * TILE_SIZE) return;
     this.placementPointerId = pointer.id;
     this.placeAtPointer(pointer);
   }
@@ -269,14 +343,15 @@ export class BuildScene extends Phaser.Scene {
   }
 
   private placeAtPointer(pointer: Phaser.Input.Pointer): void {
-    if (this.transitioning || pointer.y < BUILD_ORIGIN_Y || pointer.y >= BUILD_ORIGIN_Y + BUILD_ROWS * TILE_SIZE) return;
+    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    if (this.transitioning || worldPoint.y < BUILD_ORIGIN_Y || worldPoint.y >= BUILD_ORIGIN_Y + BUILD_ROWS * TILE_SIZE) return;
     // Grid bounds determine which player's inventory receives the placement.
     let id: PlayerId | null = null;
-    if (pointer.x >= BUILD_ORIGIN_X[2] && pointer.x < BUILD_ORIGIN_X[2] + BUILD_COLS * TILE_SIZE) id = 2;
-    else if (pointer.x >= BUILD_ORIGIN_X[1] && pointer.x < BUILD_ORIGIN_X[1] + BUILD_COLS * TILE_SIZE) id = 1;
-    if (id === null) return;
-    const col = Math.floor((pointer.x - BUILD_ORIGIN_X[id]) / TILE_SIZE);
-    const row = Math.floor((pointer.y - BUILD_ORIGIN_Y) / TILE_SIZE);
+    if (worldPoint.x >= BUILD_ORIGIN_X[2] && worldPoint.x < BUILD_ORIGIN_X[2] + BUILD_COLS * TILE_SIZE) id = 2;
+    else if (worldPoint.x >= BUILD_ORIGIN_X[1] && worldPoint.x < BUILD_ORIGIN_X[1] + BUILD_COLS * TILE_SIZE) id = 1;
+    if (id === null || id !== this.activeBuilder) return;
+    const col = Math.floor((worldPoint.x - BUILD_ORIGIN_X[id]) / TILE_SIZE);
+    const row = Math.floor((worldPoint.y - BUILD_ORIGIN_Y) / TILE_SIZE);
     if (col < 0 || col >= BUILD_COLS || row < 0 || row >= BUILD_ROWS || this.isTankCell(col, row)) return;
     const key = this.placementKey(id, col, row);
     if (this.placed.has(key)) return;
@@ -359,14 +434,21 @@ export class BuildScene extends Phaser.Scene {
 
   private updateHud(): void {
     this.hudGraphics.clear();
-    this.playerHud.update();
+    this.playerHud.update(this.activeBuilder);
     const types: TileType[] = ["dirt", "stone", "obsidian"];
     const centers: Record<PlayerId, number[]> = { 1: [168, 350, 532], 2: [1068, 1250, 1432] };
     for (const id of [1, 2] as PlayerId[]) {
       const player = playerById(id);
+      const enabledAlpha = id === this.activeBuilder ? 1 : 0.38;
+      for (const button of this.tileButtons[id]) {
+        button.panel.setAlpha(enabledAlpha);
+        button.icon.setAlpha(enabledAlpha);
+        button.label.setAlpha(enabledAlpha);
+        button.count.setAlpha(enabledAlpha);
+      }
       types.forEach((type, index) => {
         this.inventoryLabels[id][type]?.setText(`${player.inventory[type]}`);
-        if (gameState.selectedTile === type) {
+        if (id === this.activeBuilder && gameState.selectedTile === type) {
           this.hudGraphics.lineStyle(4, id === 1 ? 0x58c8ff : 0xff7777, 1)
             .strokeRoundedRect(centers[id][index] - 81, 794, 162, 74, 8);
         }
@@ -394,6 +476,21 @@ export class BuildScene extends Phaser.Scene {
 
   private finishBuild(): void {
     if (this.transitioning) return;
+    if (this.activeBuilder === 1) {
+      this.activeBuilder = 2;
+      this.elapsed = 0;
+      this.timeLeft = BUILD_SECONDS;
+      this.undoStack = [];
+      gameState.selectedTile = "dirt";
+      this.timerText.setText(formatTime(this.timeLeft));
+      this.builderText.setText("PLAYER 2  •  BUILD YOUR DEFENSE").setColor("#ffd0d0");
+      this.readyText.setText("P2 READY").setFontSize(20);
+      this.selectionText.setText("PLAYER 1 WALL COMPLETE  •  PLAYER 2, BUILD YOUR DEFENSE");
+      this.drawTimerBar();
+      this.updateHud();
+      this.focusCameraOnBuilder(true);
+      return;
+    }
     this.transitioning = true;
     this.scene.start("BattleScene");
   }

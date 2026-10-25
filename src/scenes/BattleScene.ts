@@ -86,6 +86,7 @@ export class BattleScene extends Phaser.Scene {
   private power = 0.88;
   private fireMessage = "Aim with your mouse, then click to fire.";
   private statusText!: Phaser.GameObjects.Text;
+  private powerLabel!: Phaser.GameObjects.Text;
   private weaponButtons: Partial<Record<WeaponType, WeaponButtonVisual>> = {};
 
   // Point at the battlefield to aim, then release to fire.
@@ -440,7 +441,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private createHud(): void {
-    this.hudGraphics = this.add.graphics().setDepth(25);
+    this.hudGraphics = this.add.graphics().setDepth(27);
     this.playerHud = new PlayerStatusHud(this, 25);
     this.add.rectangle(GAME_WIDTH / 2, 49, 390, 72, 0x172632, 0.96).setStrokeStyle(3, 0x9bb6c5, 0.9).setDepth(25);
     const phaseAccent = this.add.graphics().setDepth(26);
@@ -450,6 +451,7 @@ export class BattleScene extends Phaser.Scene {
     this.add.text(GAME_WIDTH / 2, 49, "BATTLE PHASE", {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "28px", color: "#ffe18c", stroke: "#17232c", strokeThickness: 6,
     }).setOrigin(0.5).setDepth(26);
+    this.makeExitButton();
 
     this.add.rectangle(GAME_WIDTH / 2, 846, 1080, 104, 0x14212b, 0.96).setStrokeStyle(3, 0x8da5b3, 0.9).setDepth(25);
     this.add.rectangle(GAME_WIDTH / 2, 790, 860, 30, 0x1b2d38, 0.92).setStrokeStyle(1, 0x66818f, 0.75).setDepth(25);
@@ -474,6 +476,10 @@ export class BattleScene extends Phaser.Scene {
     this.add.text(1080, 850, "SPACE", {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "11px", color: "#ffe4c7",
     }).setOrigin(0.5).setDepth(28);
+    this.powerLabel = this.add.text(1233, 814, "POWER", {
+      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "11px", color: "#ffe8a3",
+      stroke: "#111923", strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(27);
   }
 
   private makeWeaponButton(x: number, type: WeaponType): void {
@@ -501,9 +507,25 @@ export class BattleScene extends Phaser.Scene {
     this.weaponButtons[type] = visual;
   }
 
+  private makeExitButton(): void {
+    const x = 1450;
+    const y = 850;
+    const frame = this.add.graphics().setDepth(26);
+    frame.fillStyle(0x080d12, 0.55).fillRoundedRect(x - 54, y - 24, 118, 56, 15);
+    frame.fillStyle(0x303a43, 1).fillRoundedRect(x - 59, y - 28, 118, 56, 15);
+    frame.lineStyle(2, 0xd3a95c, 0.95).strokeRoundedRect(x - 59, y - 28, 118, 56, 15);
+    frame.fillStyle(0xe6b75b, 0.55).fillRoundedRect(x - 52, y - 22, 104, 4, 2);
+    const hitArea = this.add.rectangle(x, y, 118, 56, 0xffffff, 0.001)
+      .setDepth(28).setInteractive({ useHandCursor: true });
+    hitArea.on("pointerdown", () => this.scene.start("MenuScene"));
+    this.add.text(x, y, "EXIT", {
+      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "18px", color: "#fff4d6",
+      stroke: "#17232c", strokeThickness: 4,
+    }).setOrigin(0.5).setDepth(29);
+  }
+
   private handlePointerDown(pointer: Phaser.Input.Pointer): void {
     if (this.resolving || this.activeProjectile || this.firedThisTurn) return;
-
     // Weapon buttons remain clickable and do not start an aiming drag.
     if (pointer.y >= 800) {
       if (pointer.x >= 438 && pointer.x < 562) this.selectWeapon("shell");
@@ -618,21 +640,27 @@ export class BattleScene extends Phaser.Scene {
     const inset = 5;
     const innerWidth = width - inset * 2;
     const baseRatio = clamp(this.power / 1.5, 0, 1);
-    const chargeRatio = clamp(this.effectivePower() / 1.5, 0, 1);
-    const baseWidth = innerWidth * baseRatio;
-    const chargeWidth = innerWidth * chargeRatio - baseWidth;
-    const glowAlpha = this.chargeBonus > 0 ? 0.38 : 0.24;
-    this.hudGraphics.fillStyle(0xffa51f, glowAlpha).fillRoundedRect(x - 6, y - 5, width + 12, height + 10, 11);
+    const chargeRatio = clamp(this.chargeBonus / this.maxChargeBonus, 0, 1);
+    const fillRatio = this.isAiming ? chargeRatio : 0;
+    const fillWidth = innerWidth * fillRatio;
+    const glowColor = this.isAiming ? (chargeRatio >= 0.8 ? 0xff7838 : 0x45d9ff) : 0xffa51f;
+    const glowAlpha = this.isAiming ? 0.18 + chargeRatio * 0.48 : 0.06;
+    this.powerLabel?.setText(this.isAiming ? "CHARGING" : "POWER");
+    this.hudGraphics.fillStyle(glowColor, glowAlpha * 0.42).fillRoundedRect(x - 12, y - 10, width + 24, height + 20, 14);
+    this.hudGraphics.fillStyle(glowColor, glowAlpha).fillRoundedRect(x - 5, y - 4, width + 10, height + 8, 10);
     this.hudGraphics.fillStyle(0x111923, 1).fillRoundedRect(x, y, width, height, 7);
     this.hudGraphics.fillStyle(0x080e17, 1).fillRoundedRect(x + inset, y + inset, innerWidth, height - inset * 2, 4);
-    if (baseWidth > 0) {
-      this.hudGraphics.fillStyle(0xffb91f, 1).fillRoundedRect(x + inset, y + inset, baseWidth, height - inset * 2, 4);
-      this.hudGraphics.fillStyle(0xfff6b0, 0.98).fillRoundedRect(x + inset + 3, y + inset + 2, Math.max(0, baseWidth - 6), 5, 2);
+    if (fillWidth > 0) {
+      const fillColor = this.isAiming ? (chargeRatio >= 0.8 ? 0xff7838 : 0x45d9ff) : 0xffb91f;
+      this.hudGraphics.fillStyle(fillColor, 1).fillRoundedRect(x + inset, y + inset, fillWidth, height - inset * 2, 4);
+      this.hudGraphics.fillStyle(0xfff6b0, 0.98).fillRoundedRect(x + inset + 3, y + inset + 2, Math.max(0, fillWidth - 6), 5, 2);
     }
-    if (chargeWidth > 0) {
-      this.hudGraphics.fillStyle(0xff5b2e, 1).fillRoundedRect(x + inset + baseWidth, y + inset, chargeWidth, height - inset * 2, 4);
+    if (this.isAiming) {
+      const markerX = x + inset + innerWidth * baseRatio;
+      this.hudGraphics.lineStyle(2, 0xffcf66, 1).lineBetween(markerX, y + 2, markerX, y + height - 2);
     }
-    this.hudGraphics.lineStyle(2, 0xffe8a3, 1).strokeRoundedRect(x, y, width, height, 7);
+    this.hudGraphics.lineStyle(2, this.isAiming ? glowColor : 0xffe8a3, this.isAiming ? 0.9 : 1)
+      .strokeRoundedRect(x, y, width, height, 7);
     this.hudGraphics.lineStyle(1, 0x622c11, 0.75);
     for (const marker of [0.25, 0.5, 0.75]) {
       const markerX = x + inset + innerWidth * marker;
