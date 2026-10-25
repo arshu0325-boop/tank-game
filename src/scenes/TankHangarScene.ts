@@ -36,31 +36,88 @@ export class TankHangarScene extends Phaser.Scene {
   }
 
   private drawHangar(): void {
-    this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x33212e);
     const bg = this.add.graphics();
-    bg.fillStyle(0x241b2a, 1);
-    bg.fillRect(0, 205, GAME_WIDTH, 640);
-    bg.fillStyle(0x70413c, 1);
-    bg.fillRect(0, 303, GAME_WIDTH, 9);
-    bg.fillStyle(0x4a2d32, 1);
-    bg.fillRect(0, 312, GAME_WIDTH, 13);
-    for (const y of [500, 725]) {
-      bg.fillStyle(0x21171f, 0.85);
-      bg.fillRect(0, y + 13, GAME_WIDTH, 26);
-      bg.fillStyle(0x75423d, 1);
-      bg.fillRect(0, y, GAME_WIDTH, 15);
-      bg.fillStyle(0xc07850, 0.9);
-      bg.fillRect(0, y, GAME_WIDTH, 3);
-      bg.fillStyle(0x462b32, 1);
-      bg.fillRect(0, y + 15, GAME_WIDTH, 4);
-      for (let x = 80; x < GAME_WIDTH; x += 320) {
-        bg.fillStyle(0x8a5146, 0.85);
-        bg.fillRect(x, y + 4, 2, 8);
-      }
+    bg.fillStyle(0x252b34, 1).fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+    // Steel shop wall with framed panels and an overhead beam.
+    bg.fillStyle(0x343d48, 1).fillRect(0, 0, GAME_WIDTH, 760);
+    bg.fillStyle(0x1b222a, 1).fillRect(0, 0, GAME_WIDTH, 18);
+    bg.fillStyle(0x46515a, 1).fillRect(0, 188, GAME_WIDTH, 18);
+    bg.fillStyle(0x202831, 1).fillRect(0, 206, GAME_WIDTH, 10);
+    bg.lineStyle(3, 0x252e37, 0.9);
+    for (let x = 20; x < GAME_WIDTH; x += 160) {
+      bg.lineBetween(x, 18, x, 188);
+      bg.fillStyle(0x65717a, 0.8).fillCircle(x, 197, 3);
     }
-    bg.lineStyle(2, 0x65434a, 0.5);
-    for (let x = 30; x < GAME_WIDTH; x += 160) bg.lineBetween(x, 210, x, 840);
-    this.add.rectangle(GAME_WIDTH / 2, 207, GAME_WIDTH, 10, 0x8b5143, 0.85);
+
+    // Long fluorescent fixtures cast a warm pool of workshop light.
+    for (const x of [390, 800, 1210]) {
+      bg.fillStyle(0x171e25, 1).fillRoundedRect(x - 88, 18, 176, 18, 7);
+      bg.fillStyle(0xf5d99a, 0.95).fillRoundedRect(x - 73, 22, 146, 7, 3);
+      bg.fillStyle(0xffe2a0, 0.08).fillTriangle(x - 73, 29, x + 73, 29, x, 184);
+    }
+
+    // Tool cabinets and pegboards sit at the edges of the selection bays.
+    for (const x of [18, 1435]) {
+      bg.fillStyle(0x151b22, 1).fillRoundedRect(x, 236, 147, 230, 8);
+      bg.fillStyle(0x59636a, 1).fillRoundedRect(x + 7, 243, 133, 93, 5);
+      bg.lineStyle(2, 0x879096, 0.7);
+      for (let yy = 254; yy < 328; yy += 18) bg.lineBetween(x + 14, yy, x + 133, yy);
+      bg.fillStyle(0xb7a274, 1);
+      bg.fillRoundedRect(x + 27, 262, 7, 47, 3).fillRoundedRect(x + 54, 253, 7, 56, 3)
+        .fillRoundedRect(x + 88, 267, 7, 42, 3).fillRoundedRect(x + 114, 256, 7, 53, 3);
+      bg.fillStyle(0x303942, 1).fillRoundedRect(x + 7, 344, 133, 114, 5);
+      for (const yy of [372, 401, 430]) {
+        bg.fillStyle(0x1d252d, 1).fillRoundedRect(x + 15, yy, 117, 22, 4);
+        bg.fillStyle(0x9fa9ad, 0.8).fillRoundedRect(x + 66, yy + 8, 16, 4, 2);
+      }
+      bg.fillStyle(0xe4ae43, 0.9).fillRect(x + 7, 460, 133, 5);
+    }
+
+    // Concrete floor with a marked service lane.
+    bg.fillStyle(0x62676a, 1).fillRect(0, 760, GAME_WIDTH, 140);
+    bg.fillStyle(0x464d53, 1).fillRect(0, 760, GAME_WIDTH, 8);
+    bg.lineStyle(2, 0x85898a, 0.45);
+    for (let x = 0; x <= GAME_WIDTH; x += 200) bg.lineBetween(x, 768, x - 55, GAME_HEIGHT);
+    bg.lineStyle(3, 0xe0ad45, 0.75).lineBetween(170, 781, 170, 900).lineBetween(1430, 781, 1430, 900);
+    bg.fillStyle(0xe0ad45, 0.12).fillRect(173, 781, 1254, 119);
+    // Black and yellow safety stripe along the back of the floor.
+    bg.fillStyle(0x20262c, 1).fillRect(0, 748, GAME_WIDTH, 12);
+    for (let x = 0; x < GAME_WIDTH; x += 42) {
+      bg.fillStyle(0xe0ad45, 1).fillTriangle(x, 760, x + 18, 760, x + 30, 748);
+    }
+
+    // Loose tools add a little workshop character in the open gaps around the cards.
+    const addWrench = (x: number, y: number, angle: number): void => {
+      const tool = this.add.graphics().setPosition(x, y).setRotation(angle).setAlpha(0.82);
+      tool.lineStyle(9, 0x202a32, 1).lineBetween(-25, 1, 18, 1);
+      tool.lineStyle(5, 0xaab4b6, 1).lineBetween(-25, -2, 14, -2);
+      tool.lineStyle(7, 0x202a32, 1).strokeCircle(-25, 0, 7);
+      tool.lineStyle(5, 0xaab4b6, 1).strokeCircle(-25, 0, 4);
+      tool.lineStyle(8, 0x202a32, 1).lineBetween(14, 0, 24, -9).lineBetween(14, 0, 24, 9);
+      tool.lineStyle(4, 0xaab4b6, 1).lineBetween(16, -1, 26, -11).lineBetween(16, 1, 26, 11);
+    };
+    const addHammer = (x: number, y: number, angle: number): void => {
+      const tool = this.add.graphics().setPosition(x, y).setRotation(angle).setAlpha(0.84);
+      tool.lineStyle(10, 0x252b30, 1).lineBetween(-3, 21, 5, -18);
+      tool.lineStyle(5, 0xb77b46, 1).lineBetween(-1, 17, 7, -15);
+      tool.fillStyle(0x252b30, 1).fillRoundedRect(-17, -28, 34, 12, 4);
+      tool.fillStyle(0xb7c0c1, 1).fillRoundedRect(-14, -26, 27, 5, 2);
+    };
+    const addScrewdriver = (x: number, y: number, angle: number): void => {
+      const tool = this.add.graphics().setPosition(x, y).setRotation(angle).setAlpha(0.84);
+      tool.lineStyle(7, 0x252b30, 1).lineBetween(0, -14, 0, 23);
+      tool.lineStyle(4, 0xd0a247, 1).lineBetween(0, -10, 0, 21);
+      tool.fillStyle(0x252b30, 1).fillRoundedRect(-9, -31, 18, 19, 6);
+      tool.fillStyle(0xd9573e, 1).fillRoundedRect(-6, -29, 12, 14, 4);
+      tool.lineStyle(3, 0xaab4b6, 1).lineBetween(0, 23, 0, 30);
+    };
+
+    addWrench(535, 380, -0.65);
+    addHammer(1065, 390, 0.45);
+    addScrewdriver(535, 640, 0.35);
+    addWrench(1060, 645, 0.8);
+    addHammer(1290, 783, -0.3);
   }
 
   private makePlayerTab(x: number, y: number, id: PlayerId): void {
