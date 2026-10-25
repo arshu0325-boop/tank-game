@@ -83,10 +83,7 @@ export class BattleScene extends Phaser.Scene {
   private fireButtonPointerId: number | null = null;
   private power = 0.88;
   private fireMessage = "Aim with your mouse, then click to fire.";
-  private turnText!: Phaser.GameObjects.Text;
-  private timerText!: Phaser.GameObjects.Text;
   private statusText!: Phaser.GameObjects.Text;
-  private powerText!: Phaser.GameObjects.Text;
   private weaponButtons: Partial<Record<WeaponType, WeaponButtonVisual>> = {};
 
   // Point at the battlefield to aim, then release to fire.
@@ -229,10 +226,6 @@ export class BattleScene extends Phaser.Scene {
     if (this.activeProjectile) this.updateProjectile(delta / 1000);
     else if (this.isAiming) this.drawTrajectoryPreview();
     else this.drawAimGuide();
-    this.timerText.setText(`ROUND ${gameState.round}`);
-    this.powerText
-      .setText(`POWER  ${Math.round(this.effectivePower() * 100)}%`)
-      .setColor(this.chargeBonus > 0 ? "#8df5ff" : "#ffe18c");
     this.updateHud(delta / 1000);
     this.syncCameraLayers();
   }
@@ -444,12 +437,13 @@ export class BattleScene extends Phaser.Scene {
   private createHud(): void {
     this.hudGraphics = this.add.graphics().setDepth(25);
     this.playerHud = new PlayerStatusHud(this, 25);
-    this.add.rectangle(GAME_WIDTH / 2, 49, 390, 84, 0x172632, 0.94).setStrokeStyle(3, 0x9bb6c5, 0.9).setDepth(25);
-    this.turnText = this.add.text(GAME_WIDTH / 2, 28, "BATTLE PHASE", {
-      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "24px", color: "#f5fbff", stroke: "#17232c", strokeThickness: 5,
-    }).setOrigin(0.5).setDepth(26);
-    this.timerText = this.add.text(GAME_WIDTH / 2, 65, "ROUND 1", {
-      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "27px", color: "#ffd45b", stroke: "#20221d", strokeThickness: 5,
+    this.add.rectangle(GAME_WIDTH / 2, 49, 390, 72, 0x172632, 0.96).setStrokeStyle(3, 0x9bb6c5, 0.9).setDepth(25);
+    const phaseAccent = this.add.graphics().setDepth(26);
+    phaseAccent.lineStyle(3, 0xffd15d, 0.95)
+      .lineBetween(GAME_WIDTH / 2 - 174, 49, GAME_WIDTH / 2 - 147, 49)
+      .lineBetween(GAME_WIDTH / 2 + 147, 49, GAME_WIDTH / 2 + 174, 49);
+    this.add.text(GAME_WIDTH / 2, 49, "BATTLE PHASE", {
+      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "28px", color: "#ffe18c", stroke: "#17232c", strokeThickness: 6,
     }).setOrigin(0.5).setDepth(26);
 
     this.add.rectangle(GAME_WIDTH / 2, 846, 1080, 104, 0x14212b, 0.96).setStrokeStyle(3, 0x8da5b3, 0.9).setDepth(25);
@@ -463,9 +457,6 @@ export class BattleScene extends Phaser.Scene {
     this.add.rectangle(1035, 850, 174, 66, 0xa94432, 1).setStrokeStyle(3, 0xffc18b, 1).setDepth(26);
     this.add.text(1035, 850, "FIRE  •  SPACE", {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "19px", color: "#fff7eb", stroke: "#502218", strokeThickness: 4,
-    }).setOrigin(0.5).setDepth(27);
-    this.powerText = this.add.text(1275, 844, "POWER 88%", {
-      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "19px", color: "#ffe18c", stroke: "#1e2020", strokeThickness: 4,
     }).setOrigin(0.5).setDepth(27);
     this.add.text(GAME_WIDTH / 2, 893, "CHOOSE A WEAPON  •  AIM WITH CURSOR / RELEASE TO FIRE     |     MOVE: P1 A/D   P2 ←/→     |     POWER: ↑ / ↓", {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "13px", color: "#d6e0e5", stroke: "#111820", strokeThickness: 3,
@@ -568,7 +559,6 @@ export class BattleScene extends Phaser.Scene {
   private updateHud(_deltaSeconds = 0): void {
     this.hudGraphics.clear();
     this.playerHud.update(gameState.currentPlayer);
-    this.turnText.setText(`BATTLE PHASE  •  P${gameState.currentPlayer} TURN`);
     this.statusText.setText(this.fireMessage);
     const weaponButtons: Array<[number, WeaponType]> = [[500, "shell"], [650, "missile"], [800, "boomerang"]];
     for (const [x, type] of weaponButtons) {
@@ -593,19 +583,33 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private drawPowerMeter(): void {
-    const x = 1210;
-    const y = 869;
-    const width = 130;
-    const height = 9;
-    const innerWidth = width - 4;
-    const baseWidth = innerWidth * clamp(this.power / 1.5, 0, 1);
-    const chargeWidth = innerWidth * clamp(this.effectivePower() / 1.5, 0, 1) - baseWidth;
-    this.hudGraphics.fillStyle(0x080e17, 1).fillRoundedRect(x, y, width, height, 4);
-    if (baseWidth > 0) this.hudGraphics.fillStyle(0xffbd3d, 1).fillRoundedRect(x + 2, y + 2, baseWidth, height - 4, 3);
-    if (chargeWidth > 0) {
-      this.hudGraphics.fillStyle(0x6cf4ff, 1).fillRoundedRect(x + 2 + baseWidth, y + 2, chargeWidth, height - 4, 3);
+    const x = 1138;
+    const y = 832;
+    const width = 190;
+    const height = 34;
+    const inset = 5;
+    const innerWidth = width - inset * 2;
+    const baseRatio = clamp(this.power / 1.5, 0, 1);
+    const chargeRatio = clamp(this.effectivePower() / 1.5, 0, 1);
+    const baseWidth = innerWidth * baseRatio;
+    const chargeWidth = innerWidth * chargeRatio - baseWidth;
+    const glowAlpha = this.chargeBonus > 0 ? 0.38 : 0.24;
+    this.hudGraphics.fillStyle(0xffa51f, glowAlpha).fillRoundedRect(x - 6, y - 5, width + 12, height + 10, 11);
+    this.hudGraphics.fillStyle(0x111923, 1).fillRoundedRect(x, y, width, height, 7);
+    this.hudGraphics.fillStyle(0x080e17, 1).fillRoundedRect(x + inset, y + inset, innerWidth, height - inset * 2, 4);
+    if (baseWidth > 0) {
+      this.hudGraphics.fillStyle(0xffb91f, 1).fillRoundedRect(x + inset, y + inset, baseWidth, height - inset * 2, 4);
+      this.hudGraphics.fillStyle(0xfff6b0, 0.98).fillRoundedRect(x + inset + 3, y + inset + 2, Math.max(0, baseWidth - 6), 5, 2);
     }
-    this.hudGraphics.lineStyle(1, 0xffe9ad, 0.85).strokeRoundedRect(x, y, width, height, 4);
+    if (chargeWidth > 0) {
+      this.hudGraphics.fillStyle(0xff5b2e, 1).fillRoundedRect(x + inset + baseWidth, y + inset, chargeWidth, height - inset * 2, 4);
+    }
+    this.hudGraphics.lineStyle(2, 0xffe8a3, 1).strokeRoundedRect(x, y, width, height, 7);
+    this.hudGraphics.lineStyle(1, 0x622c11, 0.75);
+    for (const marker of [0.25, 0.5, 0.75]) {
+      const markerX = x + inset + innerWidth * marker;
+      this.hudGraphics.lineBetween(markerX, y + inset + 1, markerX, y + height - inset - 1);
+    }
   }
 
   private drawAimGuide(): void {

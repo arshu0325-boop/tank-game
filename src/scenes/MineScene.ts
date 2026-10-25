@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { addBlockImage, GAME_HEIGHT, GAME_WIDTH, MINE_COLS, MINE_ROWS, TILE_SIZE, formatTime } from "../grid";
-import { gameState, playerById, type PlayerId, type TileType } from "../state";
+import { gameState, MAX_FUEL, playerById, type PlayerId, type TileType } from "../state";
 import { PlayerStatusHud } from "../ui/PlayerStatusHud";
 
 interface MineCell {
@@ -162,6 +162,7 @@ export class MineScene extends Phaser.Scene {
     }
     if (this.timeLeft <= 0) {
       this.transitioning = true;
+      gameState.players.forEach((player) => { player.fuel = MAX_FUEL; });
       this.scene.start("BuildScene");
     }
   }
