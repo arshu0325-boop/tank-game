@@ -39,8 +39,10 @@ export class MineScene extends Phaser.Scene {
   private playerHud!: PlayerStatusHud;
   private surfaceGraphics!: Phaser.GameObjects.Graphics;
   private timerGraphics!: Phaser.GameObjects.Graphics;
+  private resourcePanelGraphics!: Phaser.GameObjects.Graphics;
   private timeText!: Phaser.GameObjects.Text;
-  private resourceText!: Phaser.GameObjects.Text;
+  private p1ResourcesText!: Phaser.GameObjects.Text;
+  private p2ResourcesText!: Phaser.GameObjects.Text;
   private hintText!: Phaser.GameObjects.Text;
   private tanks!: Record<PlayerId, Phaser.GameObjects.Image>;
   private drills!: Record<PlayerId, Phaser.GameObjects.Image>;
@@ -105,10 +107,10 @@ export class MineScene extends Phaser.Scene {
       }) as typeof this.keys;
     }
     this.hintText = this.add.text(GAME_WIDTH / 2, 210,
-      "DRIVE: P1 A / D  •  P2 ← / →     CLIMB: P1 W  •  P2 ↑     SIDE DRILL: P1 F  •  P2 ENTER     DOWN DRILL: P1 S  •  P2 ↓", {
-        fontFamily: "Arial Black, Arial, sans-serif", fontSize: "16px", color: "#fff4cf",
+      "P1 DRIVE  A / D  •  P2  ← / →     |     CLIMB  W / ↑     |     SIDE DRILL  F / ENTER     |     DOWN  S / ↓", {
+        fontFamily: "Arial Black, Arial, sans-serif", fontSize: "15px", color: "#fff4cf",
         stroke: "#27313b", strokeThickness: 5, align: "center",
-      }).setOrigin(0.5).setDepth(20);
+      }).setOrigin(0.5).setDepth(21);
     this.updateHud();
     this.setupMiningCameras();
   }
@@ -239,6 +241,8 @@ export class MineScene extends Phaser.Scene {
 
   private createHud(): void {
     this.playerHud = new PlayerStatusHud(this, 25);
+    this.add.rectangle(GAME_WIDTH / 2, 210, 1250, 42, 0x111b35, 0.82)
+      .setStrokeStyle(1, 0xa5c7ff, 0.62).setDepth(20);
     this.add.rectangle(GAME_WIDTH / 2, 42, 420, 62, 0x552b18, 0.94).setStrokeStyle(4, 0xffbe43, 1).setDepth(25);
     this.add.text(GAME_WIDTH / 2, 41, "MINE & CRAFT PHASE", {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "31px", color: "#fff5e5",
@@ -252,10 +256,15 @@ export class MineScene extends Phaser.Scene {
     this.drawMineTimerBar();
     this.tweens.add({ targets: this.timerGraphics, alpha: 0.72, duration: 520, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
     this.tweens.add({ targets: this.timeText, scale: 1.045, duration: 720, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
-    this.resourceText = this.add.text(GAME_WIDTH / 2, 875, "", {
-      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "18px", color: "#f9f3dc",
-      stroke: "#101820", strokeThickness: 4, align: "center",
-    }).setOrigin(0.5).setDepth(27);
+    this.resourcePanelGraphics = this.add.graphics().setDepth(25);
+    this.p1ResourcesText = this.add.text(42, 875, "", {
+      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "15px", color: "#d8efff",
+      stroke: "#101820", strokeThickness: 4,
+    }).setOrigin(0, 0.5).setDepth(27);
+    this.p2ResourcesText = this.add.text(1544, 875, "", {
+      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "15px", color: "#ffe1e1",
+      stroke: "#101820", strokeThickness: 4, align: "right",
+    }).setOrigin(1, 0.5).setDepth(27);
   }
 
   private updateTankMovement(deltaSeconds: number): void {
@@ -508,9 +517,18 @@ export class MineScene extends Phaser.Scene {
     this.playerHud.update();
     const p1 = playerById(1);
     const p2 = playerById(2);
-    this.resourceText.setText(
-      `P1  Dirt ${p1.inventory.dirt}  Stone ${p1.inventory.stone}  Obsidian ${p1.inventory.obsidian}  Iron ${p1.iron}` +
-      `     |     P2  Dirt ${p2.inventory.dirt}  Stone ${p2.inventory.stone}  Obsidian ${p2.inventory.obsidian}  Iron ${p2.iron}`,
+    this.resourcePanelGraphics.clear();
+    this.resourcePanelGraphics.fillStyle(0x101b32, 0.92).fillRoundedRect(18, 852, 746, 44, 10);
+    this.resourcePanelGraphics.lineStyle(2, p1.color, 0.86).strokeRoundedRect(18, 852, 746, 44, 10);
+    this.resourcePanelGraphics.fillStyle(0x101b32, 0.92).fillRoundedRect(836, 852, 746, 44, 10);
+    this.resourcePanelGraphics.lineStyle(2, p2.color, 0.86).strokeRoundedRect(836, 852, 746, 44, 10);
+    this.resourcePanelGraphics.fillStyle(p1.color, 1).fillRoundedRect(28, 860, 4, 28, 2);
+    this.resourcePanelGraphics.fillStyle(p2.color, 1).fillRoundedRect(1557, 860, 4, 28, 2);
+    this.p1ResourcesText.setText(
+      `P1  •  DIRT ${p1.inventory.dirt}    STONE ${p1.inventory.stone}    OBSIDIAN ${p1.inventory.obsidian}    IRON ${p1.iron}`,
+    );
+    this.p2ResourcesText.setText(
+      `P2  •  DIRT ${p2.inventory.dirt}    STONE ${p2.inventory.stone}    OBSIDIAN ${p2.inventory.obsidian}    IRON ${p2.iron}`,
     );
   }
 
@@ -520,11 +538,12 @@ export class MineScene extends Phaser.Scene {
     const y = 126;
     const width = 320;
     const fill = width * Phaser.Math.Clamp(this.timeLeft / MINE_SECONDS, 0, 1);
+    const timerColor = this.timeLeft <= 5 ? 0xff5962 : 0xffd34f;
     this.timerGraphics.clear();
-    if (fill > 0) this.timerGraphics.fillStyle(0xffd34f, 0.3).fillRoundedRect(x - 4, y - 4, fill + 8, 20, 7);
+    if (fill > 0) this.timerGraphics.fillStyle(timerColor, 0.3).fillRoundedRect(x - 4, y - 4, fill + 8, 20, 7);
     this.timerGraphics.fillStyle(0x15212a, 0.98).fillRoundedRect(x, y, width, 12, 5);
-    this.timerGraphics.fillStyle(0xffd34f, 1).fillRoundedRect(x + 2, y + 2, Math.max(0, fill - 4), 8, 3);
-    this.timerGraphics.lineStyle(1, 0xffef9a, 0.95).strokeRoundedRect(x, y, width, 12, 5);
+    this.timerGraphics.fillStyle(timerColor, 1).fillRoundedRect(x + 2, y + 2, Math.max(0, fill - 4), 8, 3);
+    this.timerGraphics.lineStyle(1, this.timeLeft <= 5 ? 0xffc0c0 : 0xffef9a, 0.95).strokeRoundedRect(x, y, width, 12, 5);
   }
   private drawMiningCracks(cell: MineCell): void {
   if (!cell.crack) return;

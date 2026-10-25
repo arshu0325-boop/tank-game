@@ -230,7 +230,9 @@ export class BattleScene extends Phaser.Scene {
     else if (this.isAiming) this.drawTrajectoryPreview();
     else this.drawAimGuide();
     this.timerText.setText(`ROUND ${gameState.round}`);
-    this.powerText.setText(`POWER  ${Math.round(this.effectivePower() * 100)}%`);
+    this.powerText
+      .setText(`POWER  ${Math.round(this.effectivePower() * 100)}%`)
+      .setColor(this.chargeBonus > 0 ? "#8df5ff" : "#ffe18c");
     this.updateHud(delta / 1000);
     this.syncCameraLayers();
   }
@@ -587,6 +589,23 @@ export class BattleScene extends Phaser.Scene {
         selected && available ? 1 : 0.38);
       this.hudGraphics.strokeRoundedRect(x - 54, 808, 108, 76, 8);
     }
+    this.drawPowerMeter();
+  }
+
+  private drawPowerMeter(): void {
+    const x = 1210;
+    const y = 869;
+    const width = 130;
+    const height = 9;
+    const innerWidth = width - 4;
+    const baseWidth = innerWidth * clamp(this.power / 1.5, 0, 1);
+    const chargeWidth = innerWidth * clamp(this.effectivePower() / 1.5, 0, 1) - baseWidth;
+    this.hudGraphics.fillStyle(0x080e17, 1).fillRoundedRect(x, y, width, height, 4);
+    if (baseWidth > 0) this.hudGraphics.fillStyle(0xffbd3d, 1).fillRoundedRect(x + 2, y + 2, baseWidth, height - 4, 3);
+    if (chargeWidth > 0) {
+      this.hudGraphics.fillStyle(0x6cf4ff, 1).fillRoundedRect(x + 2 + baseWidth, y + 2, chargeWidth, height - 4, 3);
+    }
+    this.hudGraphics.lineStyle(1, 0xffe9ad, 0.85).strokeRoundedRect(x, y, width, height, 4);
   }
 
   private drawAimGuide(): void {
