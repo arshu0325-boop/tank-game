@@ -3,7 +3,8 @@ import {
   BLOCK_HP, BATTLE_WORLD_WIDTH, BUILD_COLS, BUILD_ORIGIN_X, BUILD_ROWS, GAME_HEIGHT, GAME_WIDTH, TANK_X,
   TILE_SIZE, addBlockImage, clamp, distance,
 } from "../grid";
-import { gameState, MAX_HP, otherPlayerId, playerById, type PlayerId, type TileType, type WeaponType } from "../state";
+import { gameState, otherPlayerId, playerById, type PlayerId, type TileType, type WeaponType } from "../state";
+import { PlayerStatusHud } from "../ui/PlayerStatusHud";
 
 const TERRAIN_STEP = 8;
 // Keep the opening distance inside the missile's normal-power flight range.
@@ -66,6 +67,7 @@ export class BattleScene extends Phaser.Scene {
   private aimGraphics!: Phaser.GameObjects.Graphics;
   private cannonGraphics!: Phaser.GameObjects.Graphics;
   private hudGraphics!: Phaser.GameObjects.Graphics;
+  private playerHud!: PlayerStatusHud;
   private blocks: BattleBlock[] = [];
   private tanks!: Record<PlayerId, Phaser.GameObjects.Image>;
   private readonly tankHitLift: Record<PlayerId, { amount: number }> = {
@@ -83,8 +85,6 @@ export class BattleScene extends Phaser.Scene {
   private fireMessage = "Aim with your mouse, then click to fire.";
   private turnText!: Phaser.GameObjects.Text;
   private timerText!: Phaser.GameObjects.Text;
-  private p1Text!: Phaser.GameObjects.Text;
-  private p2Text!: Phaser.GameObjects.Text;
   private statusText!: Phaser.GameObjects.Text;
   private powerText!: Phaser.GameObjects.Text;
   private weaponButtons: Partial<Record<WeaponType, WeaponButtonVisual>> = {};
@@ -441,10 +441,7 @@ export class BattleScene extends Phaser.Scene {
 
   private createHud(): void {
     this.hudGraphics = this.add.graphics().setDepth(25);
-    this.add.text(42, 28, "P1  /  BLUE TANK", this.titleStyle()).setDepth(26);
-    this.add.text(1290, 28, "P2  /  RED TANK", this.titleStyle()).setDepth(26);
-    this.p1Text = this.add.text(42, 54, "", this.detailStyle()).setDepth(26);
-    this.p2Text = this.add.text(1558, 54, "", this.detailStyle()).setOrigin(1, 0).setDepth(26);
+    this.playerHud = new PlayerStatusHud(this, 25);
     this.add.rectangle(GAME_WIDTH / 2, 49, 390, 84, 0x172632, 0.94).setStrokeStyle(3, 0x9bb6c5, 0.9).setDepth(25);
     this.turnText = this.add.text(GAME_WIDTH / 2, 28, "BATTLE PHASE", {
       fontFamily: "Arial Black, Arial, sans-serif", fontSize: "24px", color: "#f5fbff", stroke: "#17232c", strokeThickness: 5,
@@ -568,12 +565,7 @@ export class BattleScene extends Phaser.Scene {
 
   private updateHud(_deltaSeconds = 0): void {
     this.hudGraphics.clear();
-    const p1 = playerById(1);
-    const p2 = playerById(2);
-    this.drawPlayerBars(20, 18, 350, p1.hp, p1.fuel, 0x42b6ff);
-    this.drawPlayerBars(1230, 18, 350, p2.hp, p2.fuel, 0xff6262);
-    this.p1Text.setText(`HP ${p1.hp}  •  FUEL ${Math.ceil(p1.fuel)}  •  HITS ${p1.hits}`);
-    this.p2Text.setText(`HP ${p2.hp}  •  FUEL ${Math.ceil(p2.fuel)}  •  HITS ${p2.hits}`);
+    this.playerHud.update(gameState.currentPlayer);
     this.turnText.setText(`BATTLE PHASE  •  P${gameState.currentPlayer} TURN`);
     this.statusText.setText(this.fireMessage);
     const weaponButtons: Array<[number, WeaponType]> = [[500, "shell"], [650, "missile"], [800, "boomerang"]];
@@ -595,21 +587,6 @@ export class BattleScene extends Phaser.Scene {
         selected && available ? 1 : 0.38);
       this.hudGraphics.strokeRoundedRect(x - 54, 808, 108, 76, 8);
     }
-  }
-
-  private drawPlayerBars(x: number, y: number, width: number, hp: number, fuel: number, accent: number): void {
-    this.hudGraphics.fillStyle(0x13222c, 0.94).fillRoundedRect(x, y, width, 158, 8);
-    this.hudGraphics.lineStyle(2, accent, 0.95).strokeRoundedRect(x, y, width, 158, 8);
-    this.drawBar(x + 18, y + 84, width - 36, 8, hp / MAX_HP, 0x62df82);
-    this.drawBar(x + 18, y + 102, width - 36, 7, fuel / 100, 0xffc456);
-  }
-
-  private drawBar(x: number, y: number, w: number, h: number, ratio: number, color: number): void {
-    const fillWidth = Math.max(0, (w - 4) * clamp(ratio, 0, 1));
-    if (fillWidth > 0) this.hudGraphics.fillStyle(color, 0.24).fillRoundedRect(x - 3, y - 3, fillWidth + 9, h + 6, 4);
-    this.hudGraphics.fillStyle(0x05080b, 1).fillRect(x, y, w, h);
-    this.hudGraphics.lineStyle(2, 0x020405, 1).strokeRect(x, y, w, h);
-    this.hudGraphics.fillStyle(color, 1).fillRect(x + 2, y + 2, fillWidth, h - 4);
   }
 
   private drawAimGuide(): void {
@@ -1303,11 +1280,4 @@ export class BattleScene extends Phaser.Scene {
     return a + (b - a) * fraction;
   }
 
-  private titleStyle(): Phaser.Types.GameObjects.Text.TextStyle {
-    return { fontFamily: "Arial Black, Arial, sans-serif", fontSize: "23px", color: "#f9f7eb", stroke: "#111820", strokeThickness: 5 };
-  }
-
-  private detailStyle(): Phaser.Types.GameObjects.Text.TextStyle {
-    return { fontFamily: "Arial Black, Arial, sans-serif", fontSize: "13px", color: "#f9f2df", stroke: "#111820", strokeThickness: 3 };
-  }
 }
