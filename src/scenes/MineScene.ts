@@ -41,8 +41,7 @@ export class MineScene extends Phaser.Scene {
   private timerGraphics!: Phaser.GameObjects.Graphics;
   private resourcePanelGraphics!: Phaser.GameObjects.Graphics;
   private timeText!: Phaser.GameObjects.Text;
-  private p1ResourcesText!: Phaser.GameObjects.Text;
-  private p2ResourcesText!: Phaser.GameObjects.Text;
+  private resourceLabels: Record<PlayerId, Partial<Record<TileType | "iron", Phaser.GameObjects.Text>>> = { 1: {}, 2: {} };
   private hintText!: Phaser.GameObjects.Text;
   private tanks!: Record<PlayerId, Phaser.GameObjects.Image>;
   private drills!: Record<PlayerId, Phaser.GameObjects.Image>;
@@ -258,14 +257,43 @@ export class MineScene extends Phaser.Scene {
     this.tweens.add({ targets: this.timerGraphics, alpha: 0.72, duration: 520, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
     this.tweens.add({ targets: this.timeText, scale: 1.045, duration: 720, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
     this.resourcePanelGraphics = this.add.graphics().setDepth(25);
-    this.p1ResourcesText = this.add.text(42, 875, "", {
-      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "15px", color: "#d8efff",
-      stroke: "#101820", strokeThickness: 4,
-    }).setOrigin(0, 0.5).setDepth(27);
-    this.p2ResourcesText = this.add.text(1544, 875, "", {
-      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "15px", color: "#ffe1e1",
-      stroke: "#101820", strokeThickness: 4, align: "right",
-    }).setOrigin(1, 0.5).setDepth(27);
+    this.resourcePanelGraphics.fillStyle(0x101b32, 0.96).fillRoundedRect(10, 834, 780, 64, 10);
+    this.resourcePanelGraphics.lineStyle(2, playerById(1).color, 0.92).strokeRoundedRect(10, 834, 780, 64, 10);
+    this.resourcePanelGraphics.fillStyle(0x101b32, 0.96).fillRoundedRect(810, 834, 780, 64, 10);
+    this.resourcePanelGraphics.lineStyle(2, playerById(2).color, 0.92).strokeRoundedRect(810, 834, 780, 64, 10);
+    this.resourcePanelGraphics.lineStyle(2, 0xd8e5ed, 0.65).lineBetween(GAME_WIDTH / 2, 838, GAME_WIDTH / 2, 894);
+    this.add.text(400, 841, "P1 BLOCKS", {
+      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "13px", color: "#9cddff",
+      stroke: "#101820", strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(27);
+    this.add.text(1200, 841, "P2 BLOCKS", {
+      fontFamily: "Arial Black, Arial, sans-serif", fontSize: "13px", color: "#ffb9b9",
+      stroke: "#101820", strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(27);
+
+    const resourceTypes: Array<TileType | "iron"> = ["dirt", "stone", "obsidian", "iron"];
+    const centers: Record<PlayerId, number[]> = { 1: [102, 294, 486, 678], 2: [922, 1114, 1306, 1498] };
+    for (const id of [1, 2] as PlayerId[]) {
+      const player = playerById(id);
+      resourceTypes.forEach((type, index) => {
+        const x = centers[id][index];
+        const fill = id === 1 ? 0x173d58 : 0x512a31;
+        this.add.rectangle(x, 873, 174, 48, fill, 1)
+          .setStrokeStyle(2, player.color, 0.95).setDepth(26);
+        addBlockImage(this, x - 49, 873, type === "iron" ? "stone" : type, {
+          size: 38,
+          ...(type === "iron" ? { ore: "iron" as const } : {}),
+        }).setDepth(27);
+        this.add.text(x + 22, 862, type.toUpperCase(), {
+          fontFamily: "Arial Black, Arial, sans-serif", fontSize: "10px", color: "#ffffff",
+          stroke: "#101820", strokeThickness: 3,
+        }).setOrigin(0.5).setDepth(28);
+        this.resourceLabels[id][type] = this.add.text(x + 22, 884, "0", {
+          fontFamily: "Arial Black, Arial, sans-serif", fontSize: "18px", color: id === 1 ? "#b7eaff" : "#ffd0cc",
+          stroke: "#101820", strokeThickness: 4,
+        }).setOrigin(0.5).setDepth(28);
+      });
+    }
   }
 
   private updateTankMovement(deltaSeconds: number): void {
@@ -516,21 +544,13 @@ export class MineScene extends Phaser.Scene {
 
   private updateHud(): void {
     this.playerHud.update();
-    const p1 = playerById(1);
-    const p2 = playerById(2);
-    this.resourcePanelGraphics.clear();
-    this.resourcePanelGraphics.fillStyle(0x101b32, 0.92).fillRoundedRect(18, 852, 746, 44, 10);
-    this.resourcePanelGraphics.lineStyle(2, p1.color, 0.86).strokeRoundedRect(18, 852, 746, 44, 10);
-    this.resourcePanelGraphics.fillStyle(0x101b32, 0.92).fillRoundedRect(836, 852, 746, 44, 10);
-    this.resourcePanelGraphics.lineStyle(2, p2.color, 0.86).strokeRoundedRect(836, 852, 746, 44, 10);
-    this.resourcePanelGraphics.fillStyle(p1.color, 1).fillRoundedRect(28, 860, 4, 28, 2);
-    this.resourcePanelGraphics.fillStyle(p2.color, 1).fillRoundedRect(1557, 860, 4, 28, 2);
-    this.p1ResourcesText.setText(
-      `P1  •  DIRT ${p1.inventory.dirt}    STONE ${p1.inventory.stone}    OBSIDIAN ${p1.inventory.obsidian}    IRON ${p1.iron}`,
-    );
-    this.p2ResourcesText.setText(
-      `P2  •  DIRT ${p2.inventory.dirt}    STONE ${p2.inventory.stone}    OBSIDIAN ${p2.inventory.obsidian}    IRON ${p2.iron}`,
-    );
+    for (const id of [1, 2] as PlayerId[]) {
+      const player = playerById(id);
+      for (const type of ["dirt", "stone", "obsidian"] as TileType[]) {
+        this.resourceLabels[id][type]?.setText(`${player.inventory[type]}`);
+      }
+      this.resourceLabels[id].iron?.setText(`${player.iron}`);
+    }
   }
 
   private drawMineTimerBar(): void {
